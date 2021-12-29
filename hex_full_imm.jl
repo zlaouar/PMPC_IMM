@@ -62,6 +62,7 @@ function stateEstIMM(π, num_modes, x_prev, μ_prev, P_prev, u, z, F, G, C, W, V
     ## Interaction/Mixing of Estimates
     S = Array{Float64, 3}(undef, 12, 12, num_modes)
     K = Array{Float64, 3}(undef, 12, 12, num_modes)
+    #K = []
     x_hat_p = Array{Float64, 2}(undef, 12, num_modes)
     x_hat_u = Array{Float64, 2}(undef, 12, num_modes)
     v_arr = Array{Float64, 2}(undef, 12, num_modes)
@@ -79,7 +80,7 @@ function stateEstIMM(π, num_modes, x_prev, μ_prev, P_prev, u, z, F, G, C, W, V
 
     #@bp
     # Model Conditioned Filtering
-    @show G
+    #@show G
     for j in 1:num_modes
         if μ_prev == [0.0, 1.0]
             #@bp
@@ -203,7 +204,7 @@ function simulate(SS)
         @constraint(model, u[:,1,m] .== u[:,1,1])
     end
 
-    @constraint(model, [i=1:6], 15.5.>= u[i,:,:] .>= 0)
+    #@constraint(model, [i=1:6], 15.5.>= u[i,:,:] .>= 0)
 
 
     plt = plot3d(
@@ -273,7 +274,7 @@ function simulate(SS)
         u = u_seq[:,1,1]
         display(u)
         # Plot
-        push!(plt,x_true[1],x_true[2],x_true[2])
+        push!(plt,x_true[1],x_true[2],x_true[3])
 
         # Re-init starting state to mean of new belief
         z = C*x_true + rand(Vd)
