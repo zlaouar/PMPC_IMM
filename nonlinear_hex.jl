@@ -12,8 +12,8 @@ function simulate_nonlinear(x, u, t)
     p[3] = Jz
     p[4] = m
     p[5] = g
-    tspan = (0.0,0.1)
     dt = 0.01
+    tspan = (0.0,dt)
     for (i, j) in 1:dt:t
         p[6] = u[1, i]
         p[7] = u[2, i]
