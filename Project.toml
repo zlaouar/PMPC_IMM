@@ -1,0 +1,8 @@
+name = "Hexarotor_MPC"
+uuid = "320f6295-277a-44b9-ab9d-457d7637bddc"
+authors = ["zaky <zakariya.laouar@colorado.edu>"]
+version = "0.1.0"
+
+[deps]
+DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
