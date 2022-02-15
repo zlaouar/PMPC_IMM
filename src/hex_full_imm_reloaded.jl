@@ -45,7 +45,6 @@ end
 
 
 function hexOpt(model)
-
     optimize!(model);
     return value.(model[:x]), value.(model[:u])
 
@@ -73,13 +72,15 @@ end
 
 # MFMPC Controller
 function controller(c::MFMPC, b)
+    print("mpc")
     _, u_seq = hexOpt(c.model)
     return u_seq[:,1,1]
 end
 
 # Constant Control Controller
 function controller(c, b)
-    thr = 20
+    thr = m*g/6
+    print("Static")
     u = [thr, thr, thr, thr, thr, thr]
     return u
 end
@@ -88,10 +89,6 @@ end
 function controller(c, x, SS)
     L, x_ref, cntrl_mat = SS.L, SS.xref, SS.cntrl_mat
 
-    #@bp
-    #@show L
-    #@show x
-    #@show x_ref
     uv = -L*(x-x_ref)
 
     # Saturate control at max thrust of motor 15.5 N
@@ -108,20 +105,15 @@ function controller(c, x, SS)
 end
 
 function dynamics(x, u, i, SS, noise_mat_val)
-    #print(SS.noise_mat_val[1,1,1])
-    F, G0, G4, C, Vd = SS.F, SS.G0, SS.G4, SS.C, SS.Vd
+    F, G0, G1, C, Vd, m, g = SS.F, SS.G0, SS.G1, SS.C, SS.Vd, SS.m, SS.g
     #F, G0, G3, C, noise_mat_val= SS.F, SS.G0, SS.G3, SS.C
-    if i > 50
-        #@bp
-        x_true = F * x + G4 * u + noise_mat_val[:,2,1]
-        #@show x_est
+    unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
+    if i > 1
+        x_true = F * x + G1 * u - G0 * unom + noise_mat_val[:,2,1]
     else
-        x_true = F * x + G0 * u + noise_mat_val[:,2,1]#
-        #x_true = x_seq[:,2,1]
+        x_true = F * x + G0 * u - G0 * unom + noise_mat_val[:,2,1]
     end
-    #@show x_true
-
-    z = C*x_true + rand(Vd)
+    z = C * x_true #+ rand(Vd)
     return x_true, z
 end
 
@@ -136,9 +128,10 @@ struct belief
 end
 
 function belief_updater(bu::IMM, b, u, z, SS)
-    F, G, C, W, V = SS.F,  SS.Gmode,  SS.C,  SS.W,  SS.V
+    F, G, C, W, V, m, g = SS.F,  SS.Gmode,  SS.C,  SS.W,  SS.V, SS.m, SS.g
     π = bu.π
     num_modes = bu.num_modes
+    unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
 
     x_prev = b.means
     P_prev = b.covariances
@@ -155,22 +148,22 @@ function belief_updater(bu::IMM, b, u, z, SS)
     L = Float64[]
 
     μ_pred = [sum(π[i,j]*μ_prev[i] for i in 1:num_modes) for j in 1:num_modes] # Predicted mode probabilities
-    @bp
     μ_ij = transpose(reshape([π[i,j]*μ_prev[i]/μ_pred[j] for i in 1:num_modes for j in 1:num_modes], num_modes, num_modes)) # Mixing probabilities
 
     x_hat = hcat([sum(x_prev[:,i]*μ_ij[i,j] for i in 1:num_modes) for j in 1:num_modes]...)  # Mixing estimate
     P_hat = reshape([sum((P_prev[i] + (x_hat[:,j]-x_prev[:,i])*(x_hat[:,j]-x_prev[:,i])')*μ_ij[i,j] for i in 1:num_modes) for j in 1:num_modes], 1, 1, num_modes) # Mixing covariance
 
     # Model Conditioned Filtering
-    Wfail = 2*W
+    #Wfail = 2*W
     for j in 1:num_modes
         u_effect[:,j] = G[:,:,j] * u
-        x_hat_p[:,j] = F * x_hat[:,j] + G[:,:,j] * u # Predicted state
-        if j == 1
-            P_hat[j] = F * P_hat[j] * transpose(F) + W # Predicted covariance
-        else
-            P_hat[j] = F * P_hat[j] * transpose(F) + Wfail # Predicted covariance
-        end
+        x_hat_p[:,j] = F * x_hat[:,j] + G[:,:,j] * u - G[:,:,j] * unom # Predicted state
+        P_hat[j] = F * P_hat[j] * transpose(F) + W # Predicted covariance
+        #if j == 1
+        #    P_hat[j] = F * P_hat[j] * transpose(F) + W # Predicted covariance
+        #else
+        #    P_hat[j] = F * P_hat[j] * transpose(F) + Wfail # Predicted covariance
+        #end
         v_arr[:,j] = z - C * x_hat_p[:,j] # measurement residual
         S[:,:,j] = C * P_hat[j] * transpose(C) + V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(C) * inv(S[:,:,j]) # filter gain
@@ -183,11 +176,21 @@ function belief_updater(bu::IMM, b, u, z, SS)
         MvL = MvNormal(Symmetric(S[:,:,j])) # likelihood function
         push!(L, pdf(MvL, v_arr[:,j]))
     end
-
+    @bp
+    #@show v_arr
+    @show μ_prev
+    @show μ_pred
+    @show μ_ij
+    @show L
     for j in 1:num_modes
-        push!(μ, μ_pred[j]*L[j]/sum(μ_pred[i]*L[i] for i in 1:num_modes))
+        push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
-
+    var = 0.01/6
+    #μ = [0.99, var, var, var, var, var, var]
+    @show μ
+    
+    
+    
     # Combination of Estimates
     x = sum(x_hat_u[:,j] * μ[j] for j in 1:num_modes) # overall estimate
     P = sum((P_hat[j] + (x - x_hat_u[:,j]) * transpose(x - x_hat_u[:,j])) * μ[j] for j in 1:num_modes)# overall covariance
@@ -231,11 +234,13 @@ function simulate(d, c, bu, b0, x0, SS)
         @bp
         #u = controller(c, x_est, SS)
         u = controller(c, b)
+        println(u)
         #u = [1000, 1000, 1000, 1000, 1000, 1000]
 
         #@show u
 
         x, z = dynamics(x, u, i, SS, noise_mat_val)
+        @bp
         b_next, x_est = belief_updater(bu, b, u, z, SS)
         b = b_next
         @show i
@@ -252,20 +257,26 @@ function simulate(d, c, bu, b0, x0, SS)
         fix.(c.model[:noise_mat], noise_mat_val)
 
         push!(x_true_vec, x)
-        push!(x_trajec, x_est[1:3])
-        push!(μ_vec, b_next.mode_probs)
-        push!(u_commands, u)
-        push!(bh,(bel = b,u,z)) # add to belief history
+        #push!(x_trajec, x_est[1:3])
+        #push!(μ_vec, b_next.mode_probs)
+        #push!(u_commands, u)
+        #push!(bh,(bel = b,u,z)) # add to belief history
 
-        b = b_next
+        #b = b_next
 
-        push!(plt,x_est[1],x_est[2],-x_est[3])
+        #push!(plt,x_est[1],x_est[2],-x_est[3])
     end
 
-    plotting(x_trajec, x_true_vec, u_commands, μ_vec, num_steps, SS)
-
-    savefig(plt, "hex_trajec.pdf")
-    electrondisplay(plt)
+    #plotting(x_trajec, x_true_vec, u_commands, μ_vec, num_steps, SS)
+    x_trajec_true = reduce(hcat, x_true_vec)'
+    xrange = range(0, length = num_steps, step = SS.delT)
+    tmpplt = plot(xrange, -x_trajec_true[:,3], linewidth = 1)
+    title!("z-position")
+    xlabel!("Time(s)")
+    ylims!(-10, 30)
+    electrondisplay(tmpplt)
+    #savefig(plt, "hex_trajec.pdf")
+    #electrondisplay(plt)
 
     return bh
 
@@ -273,6 +284,7 @@ end
 function newG(G, b, SS)
     T, M, Gmode, nm = SS.T, SS.M, SS.Gmode, SS.nm
     # Sample fault distribution
+    @show b.mode_probs
     dist = Categorical(b.mode_probs)
     sampled_inds = rand(dist, M)
     #@show sampled_inds
@@ -367,10 +379,10 @@ function mfmpc()
              b*l*sqrt(3)/2      0      -b*l*sqrt(3)/2     -b*l*sqrt(3)/2     0     b*l*sqrt(3)/2;
              d                 -d           d                 -d             d          -d      ]
 
-    # MixMat = [1                 1            1                  1           1          1         ;
-    #           l/2             l         l/2             -l/2       -l      -l/2      ;
-    #           l*sqrt(3)/2      0      -l*sqrt(3)/2     -l*sqrt(3)/2     0     l*sqrt(3)/2;
-    #           d/b                -d/b           d/b                 -d/b             d/b          -d/b      ]
+    MixMat = [1                 1            1                  1           1          1         ;
+              l/2             l         l/2             -l/2       -l      -l/2      ;
+              l*sqrt(3)/2      0      -l*sqrt(3)/2     -l*sqrt(3)/2     0     l*sqrt(3)/2;
+              d/b                -d/b           d/b                 -d/b             d/b          -d/b      ]
 
     ctrl_mat = pinv(MixMat)
 
@@ -456,7 +468,7 @@ function mfmpc()
     G6 = st_tr_mat1[1:nn,nn+1:end]
 
     # Initialize Belief of Faults
-    dist = Categorical([1,0,0,0,0,0,0])
+    dist = Categorical([0.94,0.01,0.01,0.01,0.01,0.01,0.01])
 
     # Sample from fault belief and simulate dynamics w/ 2% failure prob
     G = zeros(nn, T*nm, M)
@@ -509,9 +521,9 @@ function mfmpc()
 
     # Define Process and Measurement Noise
     mu = zeros(nn)
-    P = Diagonal(0.001*ones(nn)) + zeros(nn,nn)
-    W = Diagonal(0.0001*ones(nn)) + zeros(nn,nn)
-    V = Diagonal(0.0001*ones(np)) + zeros(np,np)
+    P = Diagonal(0.01*ones(nn)) + zeros(nn,nn)
+    W = Diagonal(0.001*ones(nn)) + zeros(nn,nn)
+    V = Diagonal(0.01*ones(np)) + zeros(np,np)
 
 
 
@@ -523,8 +535,8 @@ function mfmpc()
     for i in 1:M
         noise_mat_val[:,:,i] = rand(prm,T)
     end
-    xinit = [0 0 0 0 0 0 0 0 0 0 0 0]
-    uref = [m*g 0 0 0]
+    xinit = [0 0 -10 0 0 0 0 0 0 0 0 0]
+    unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
     num_steps = 100
     #xrefval = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
@@ -560,7 +572,8 @@ function mfmpc()
 
     #@constraint(model, Gmat .== Gmat0)
     for m = 1:M
-        @constraint(model, [j=2:T], x[:,j,m] .== F*x[:,j-1,m] + Gmat[:, nm*(j-2)+1:nm*(j-1), m]*u[:,j-1,m] + noise_mat[:,j,m])
+        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, nm * (j-2) + 1:nm * (j-1), m] * u[:,j-1,m]
+                                                 - Gmat[:, nm * (j-2) + 1:nm * (j-1), m] * unom + noise_mat[:,j,m])
         @constraint(model, x[:,1,m] .== x0)
     end
     fix.(Gmat, G)
@@ -569,13 +582,14 @@ function mfmpc()
         @constraint(model, u[:,1,m] .== u[:,1,1])
     end
 
-    #@constraint(model, [i=1:6], 15.5 .>= u[i,:,:] .>= 0.1)
+    @constraint(model, [i=1:6], 15.5 .>= u[i,:,:] .>= 0.1)
 
 
     x_prev = repeat(xinit', outer = [1, num_modes])
-    μ0 = [1 0 0 0 0 0 0] # Initial mode probabilities
+    μ0 = [0.94 0.01 0.01 0.01 0.01 0.01 0.01] # Initial mode probabilities
     P0 = repeat(P, outer = [1, 1, num_modes])
     P_fail = 2*P
+    P_fail = P
     P0 = Array[P,P_fail,P_fail,P_fail,P_fail,P_fail,P_fail]
 
     # Markov Chain Transition Matrix
@@ -612,16 +626,16 @@ function plotting(x_trajec, x_true_vec, u_commands, μ_vec, num_steps, SS)
     xrange = range(0,length = num_steps,step = delT)
 
     xplt = plot(xrange , x_trajec1[:,1], xlabel = "time (s)", ylabel = L"x_{position} (m)", title = "Hexacopter Reference Tracking",label = "IMM", legend = :bottomright, linewidth = 3)
-    plot!(xrange, x_trajec_true[:,1], label = "True", linewidth = 3)
+    plot!(xrange, x_trajec_true[:,1], label = "True", linewidth = 1)
     plot!(xrange, xref[1]*ones(length(xrange)),label = L"x_{ref}", linewidth = 3)
 
     yplt = plot(xrange, x_trajec1[:,2], xlabel = "time (s)", ylabel = L"y_{position} (m)",label = "IMM", legend = :bottomright, linewidth = 3)
-    plot!(xrange, x_trajec_true[:,2], label = "True", linewidth = 3)
+    plot!(xrange, x_trajec_true[:,2], label = "True", linewidth = 1)
     plot!(xrange, xref[2]*ones(length(xrange)),label = L"y_{ref}", linewidth = 3)
 
-    zplt = plot(xrange, -x_trajec1[:,3], xlabel = "time (s)", ylabel = L"z_{position} (m)",label = "IMM", legend = :bottomright, linewidth = 3)
+    zplt = plot(xrange, -x_trajec1[:,3], xlabel = "time (s)",  ylabel = L"z_{position} (m)",label = "IMM", legend = :bottomright, linewidth = 3)
 
-    plot!(xrange, -x_trajec_true[:,3], label = "True", linewidth = 3)
+    plot!(xrange, -x_trajec_true[:,3], label = "True", linewidth = 1)
     plot!(xrange, -xref[3]*ones(length(xrange)),label = L"z_{ref}", linewidth = 3)
 
     finalplt = plot(xplt,yplt,zplt, layout = (3,1) ,size=(600, 700))

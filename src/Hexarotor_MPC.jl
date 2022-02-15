@@ -1,11 +1,11 @@
 module Hexarotor_MPC
 
-    using 
+import Parameters
+import LinearAlgebra
+import DifferentialEquations
 
-
-
-export
-    linearSolver
-    nonlinearSolver
+include("HexacopterLinear.jl")
+export LinearModel
+export simulate_nonlinear
 
 end # module
