@@ -1,1 +1,1 @@
-# Hexarotor_MPC
+# HexarotorMPC
