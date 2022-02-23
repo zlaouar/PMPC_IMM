@@ -1,2 +1,5 @@
 Manifest.toml
 *.workspace
+*.pdf
+*.png
+*.svg

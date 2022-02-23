@@ -146,6 +146,9 @@ function belief_updater(bu::IMM, b, u, z, SS)
     μ = Float64[]
     #v = Array{Float64, 3}(undef, 3, 1, num_modes)
     L = Float64[]
+    LL = Float64[]
+    LLL = Float64[]
+    Smat = Float64[]
 
     μ_pred = [sum(π[i,j]*μ_prev[i] for i in 1:num_modes) for j in 1:num_modes] # Predicted mode probabilities
     μ_ij = transpose(reshape([π[i,j]*μ_prev[i]/μ_pred[j] for i in 1:num_modes for j in 1:num_modes], num_modes, num_modes)) # Mixing probabilities
@@ -173,8 +176,15 @@ function belief_updater(bu::IMM, b, u, z, SS)
 
         # Mode Probability update and FDD logic
         #L[j] = (1/sqrt(2*pi*S[:,3*(j-1)+1:3*j]))*exp(-0.5*transpose(v[:,j])*S[:,3*(j-1)+1:3*j]*v[:,j])
-        MvL = MvNormal(Symmetric(S[:,:,j])) # likelihood function
-        push!(L, pdf(MvL, v_arr[:,j]))
+        MvL = MvNormal(Symmetric(S[:,:,j]))#* sqrt((2*pi)^12 * det(S[:,:,j]) likelihood function
+        push!(Smat, det(S[:,:,j]))
+        push!(L, loglikelihood(MvL, v_arr[:,j]))
+        #push!(LL, loglikelihood(MvL, v_arr[:,j]))
+        maxL = maximum(L)
+        L = L .+ sum(exp.(L .- maxL)) .- maxL
+        L = exp.(L) / sum(exp.(L))
+        push!(LL, pdf(MvL, v_arr[:,j]))
+        push!(LLL, pdf(MvL, v_arr[:,j]) * sqrt((2*pi)^12 * det(S[:,:,j])))
     end
     @bp
     #@show v_arr
@@ -182,8 +192,11 @@ function belief_updater(bu::IMM, b, u, z, SS)
     @show μ_pred
     @show μ_ij
     @show L
+    @show LL
+    @show LLL
+    @show Smat
     for j in 1:num_modes
-        push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
+        push!(μ, (μ_pred[j]*LL[j])/sum(μ_pred[i]*LL[i] for i in 1:num_modes))
     end
     var = 0.01/6
     #μ = [0.99, var, var, var, var, var, var]
@@ -429,8 +442,8 @@ function mfmpc()
     #print(B)
 
     L = dlqr(sysd, Q_lqr, R_lqr) # lqr(sys,Q,R) can also be used
-    print("L:\n")
-    @show L
+    #print("L:\n")
+    
 
 
     # Define Discrete Time State Space Matrices
