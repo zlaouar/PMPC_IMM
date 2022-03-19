@@ -1,5 +1,3 @@
-#module MFMPC_CODE
-
 using JuMP
 using Ipopt
 using LinearAlgebra
@@ -47,7 +45,6 @@ end
 function hexOpt(model)
     optimize!(model);
     return value.(model[:x]), value.(model[:u])
-
 end
 
 function stateEst(μ_prev, P_prev, u, z, F, G, C, W, V)
@@ -86,15 +83,14 @@ function controller(c, b)
 end
 
 # LQR Controller
-function controller(c, x, SS)
-    L, x_ref, cntrl_mat = SS.L, SS.xref, SS.cntrl_mat
-
-    uv = -L*(x-x_ref)
+function controller(c, x, x_ref, L)
+    #L, cntrl_mat = SS.L, SS.cntrl_mat
+    uv = -L * (x - x_ref)
 
     # Saturate control at max thrust of motor 15.5 N
     #uv = max.(min.(uv, ones(4)*30), zeros(4))
     #uv[1] = uv[1] + (2.4 * 9.8) # add reference input
-    u = cntrl_mat * uv
+    #u = cntrl_mat * uv
 
     @show uv
     @show u
@@ -108,10 +104,10 @@ function dynamics(x, u, i, SS, noise_mat_val)
     F, G0, G1, C, Vd, m, g = SS.F, SS.G0, SS.G1, SS.C, SS.Vd, SS.m, SS.g
     #F, G0, G3, C, noise_mat_val= SS.F, SS.G0, SS.G3, SS.C
     unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
-    if i > 1
-        x_true = F * x + G1 * u - G0 * unom + noise_mat_val[:,2,1]
+    if i > 10
+        x_true = F * x + G1 * u - G0 * unom # + noise_mat_val[:,2,1]
     else
-        x_true = F * x + G0 * u - G0 * unom + noise_mat_val[:,2,1]
+        x_true = F * x + G0 * u - G0 * unom # + noise_mat_val[:,2,1]
     end
     z = C * x_true #+ rand(Vd)
     return x_true, z
@@ -220,18 +216,15 @@ function simulate(d, c, bu, b0, x0, SS)
     prm = MvNormal(SS.W)
     noise_mat_val = SS.noise_mat_val
 
-    x_trajec = Vector{Float64}[]
     x_true_vec = Vector{Float64}[]
-    μ_vec = Vector{Float64}[]
-    u_commands = Vector{Float64}[]
 
     b = b0
     x = x0
     x_est = x0
     bh = [] # belief history
     num_steps = 100
-
-    plt = plot3d(
+    x_ref = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    #= plt = plot3d(
         1,
         xlim = (-0.5, 0.5),
         ylim = (-0.5, 0.5),
@@ -242,32 +235,25 @@ function simulate(d, c, bu, b0, x0, SS)
         zlabel = L"z (m)",
         marker = 2,
         label = false
-    )
+    ) =#
     for i in 1:num_steps
-        @bp
         #u = controller(c, x_est, SS)
         u = controller(c, b)
-        println(u)
-        #u = [1000, 1000, 1000, 1000, 1000, 1000]
-
-        #@show u
-
         x, z = dynamics(x, u, i, SS, noise_mat_val)
-        @bp
-        b_next, x_est = belief_updater(bu, b, u, z, SS)
-        b = b_next
+        b, x_est = belief_updater(bu, b, u, z, SS)
+        b = b_nextS
+        G = newG(G, b, SS)
         @show i
-        G = newG(G, b_next, SS)
 
         # Update particle process noise
-        for j in 1:M
-            noise_mat_val[:,:,j] = rand(prm,T)
-        end
+        #for j in 1:M
+        #    noise_mat_val[:,:,j] = rand(prm,T)
+        #end
 
         # Update model parameters
-        set_value.(c.model[:x0], x_est)
-        fix.(c.model[:Gmat], G)
-        fix.(c.model[:noise_mat], noise_mat_val)
+        #set_value.(c.model[:x0], x_est)
+        #fix.(c.model[:Gmat], G)
+        #fix.(c.model[:noise_mat], noise_mat_val)
 
         push!(x_true_vec, x)
         #push!(x_trajec, x_est[1:3])
@@ -282,12 +268,12 @@ function simulate(d, c, bu, b0, x0, SS)
 
     #plotting(x_trajec, x_true_vec, u_commands, μ_vec, num_steps, SS)
     x_trajec_true = reduce(hcat, x_true_vec)'
-    xrange = range(0, length = num_steps, step = SS.delT)
-    tmpplt = plot(xrange, -x_trajec_true[:,3], linewidth = 1)
-    title!("z-position")
-    xlabel!("Time(s)")
-    ylims!(-10, 30)
-    electrondisplay(tmpplt)
+    #xrange = range(0, length = num_steps, step = SS.delT)
+    #tmpplt = plot(xrange, -x_trajec_true[:,3], linewidth = 1)
+    #title!("z-position")
+    #xlabel!("Time(s)")
+    #ylims!(-10, 30)
+    #electrondisplay(tmpplt)
     #savefig(plt, "hex_trajec.pdf")
     #electrondisplay(plt)
 
@@ -488,7 +474,7 @@ function mfmpc()
     Gmode = reshape(hcat(G0, G1, G2, G3, G4, G5, G6), nn, nm, num_modes)
     #@bp
     gvec = zeros(T)
-    μ_est = convert(Vector{Int}, ones(M))
+    μ_est = Int.(ones(M))
 
     failed_rotor = 0
     for j = 1:M
@@ -622,7 +608,6 @@ function mfmpc()
     #c = "constant_control"
     @bp
     return simulate(d, c, bu, b0, x0, SS), SS, bu
-
 end
 
 function plotting(x_trajec, x_true_vec, u_commands, μ_vec, num_steps, SS)

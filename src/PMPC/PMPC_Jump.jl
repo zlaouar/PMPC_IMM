@@ -1,0 +1,174 @@
+using Distributions
+using JuMP
+using Ipopt
+using LinearAlgebra
+using ParameterJuMP
+using StaticArrays
+
+const m = 2.4 # kg
+const g = 9.81
+
+const ns = 12 # number of states
+const na = 6 # number of actuators
+const nm = 3 # number of measurements
+
+#const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+const W = Diagonal(0.001*ones(ns)) + zeros(ns,ns)
+const V = Diagonal(0.01*ones(nm)) + zeros(nm,nm)
+const Wd = MvNormal(W)
+const Vd = MvNormal(V)
+
+const prm = MvNormal(W)
+
+const unom_vec = [[m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6], [0, m*g/4, m*g/4, 0, m*g/4, m*g/4]]
+
+function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
+    F, G, H = SS.F, SS.G, SS.H
+    # Define Q,R Matrices for PMPC optimization
+    Q = 100000*(H'*H)
+    #Q = Diagonal([5,5,5,10,10,10,1,1,1,10,10,1]) + zeros(nn,nn)
+    #Q[3,3] = 10000000
+
+    R = (I + zeros(na,na))*0.0001
+
+    prm = MvNormal(W)
+
+    
+    xinit = [0 0 -10 0 0 0 0 0 0 0 0 0]
+
+    waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
+                        0 1 2 0 0 0 0 0 0 0 0 0 ;
+                        0 0 -2 0 0 0 0 0 0 0 0 0]
+
+    xrefval = waypoints[3,:]
+    @show unom_init
+    # Init Model
+    model = Model(Ipopt.Optimizer)
+    set_silent(model)
+    @variables(model, begin
+        x[1:ns, 1:T, 1:M]
+        u[1:na, 1:T, 1:M]
+        Gmat[1:ns, 1:na*T, 1:M]
+        noise_mat[i=1:ns, j=1:T, k=1:M]
+        unom[1:na, 1:T, 1:M]
+    end)
+
+    @objective(model, Min, (1/M) * sum(sum(dot(x[:,j,i]-xrefval, Q, x[:,j,i]-xrefval) + dot(u[:,j,i], R, u[:,j,i]) for j in 1:T) for i in 1:M))
+
+    # Initial Conditions
+    x0 = @variable(model,x0[i=1:ns] == xinit[i], Param()) 
+    
+    for m = 1:M
+        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, na * (j-2) + 1:na * (j-1), m] * u[:,j-1,m]
+                                                - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom[:,j,m] + noise_mat[:,j,m])
+        @constraint(model, x[:,1,m] .== x0)
+    end
+    @show size(Gmat)
+    #@show G
+    fix.(Gmat, Gvec)
+    fix.(noise_mat, noise_mat_val)
+    fix.(unom, unom_init)
+    for m = 2:M
+        @constraint(model, u[:,1,m] .== u[:,1,1])
+    end
+
+    @constraint(model, [i=1:6], 15.5 .>= u[i,:,:] .>= 0.1)
+
+    return model
+end
+
+
+struct belief
+    means::SVector{2,SVector{12,Float64}}
+    covariances::SVector{2,SMatrix{12, 12, Float64}}
+    mode_probs::SVector{2,Float64}
+end
+
+mutable struct IMM
+    π_mat::SMatrix{2, 2, Float64}
+    num_modes::Int64
+    bel::belief
+end
+
+mutable struct ssModel
+    F::SMatrix{12,12,Float64}
+    G::SMatrix{12,6,Float64}
+    Gfail::SMatrix{12,6,Float64}
+    Gmode::Vector{SMatrix{12, 6, Float64}}
+    H::SMatrix{3,12,Float64}
+    D::SMatrix{3,6,Float64}
+end
+
+function genGmat!(G, unom_init, b, Gmode, T, M, nm)
+    # Sample fault distribution
+    #@show b.mode_probs
+    dist = Categorical(b.mode_probs)
+    sampled_inds = rand(dist, M)
+    #@show sampled_inds
+    gvec = zeros(T)
+
+    failed_rotor = 0
+    for j = 1:M
+        if sampled_inds[j] == 1 # nominal particle
+            for i in 1:T
+                rand_fail = rand()
+                if rand_fail < 0.03
+                    failed_rotor = 1
+                #=elseif rand_fail > 0.03 && rand_fail < 0.06
+                    failed_rotor = 2
+                elseif rand_fail > 0.06 && rand_fail < 0.09
+                    failed_rotor = 3
+                elseif rand_fail > 0.09 && rand_fail < 0.12
+                    failed_rotor = 4
+                elseif rand_fail > 0.12 && rand_fail < 0.15
+                    failed_rotor = 5
+                elseif rand_fail > 0.15 && rand_fail < 0.18
+                    failed_rotor = 6 =#
+
+                else
+                    G[:, na*(i-1)+1:na*i, j] = Gmode[1]
+                    unom_init[:,i,j] = unom_vec[1]
+                end
+
+                if failed_rotor != 0
+                    G[:, na*(i-1)+1:na*i, j] = Gmode[failed_rotor + 1]
+                    unom_init[:,i:end,j] = repeat(unom_vec[failed_rotor + 1], 1, T-i+1)
+                    gvec[i] = 1
+                    for k in i+1:T
+                        G[:, na*(k-1)+1:na*k, j] = Gmode[failed_rotor + 1]
+                        gvec[k] = 1
+                    end
+                    break
+                end
+                failed_rotor = 0
+
+            end
+        else # failure particle
+            G[:, :, j] = repeat(Gmode[sampled_inds[j]], 1, T)
+            unom_init[:,:,j] = repeat(unom_vec[sampled_inds[j]], 1, T)
+        end
+    end
+
+    return G
+end
+
+# MFMPC Controller
+function umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+    print("mpc")
+    @time fix.(model[:Gmat], genGmat!(Gmat, unom_init, bel, Gmode, T, M, nm))
+    #display(unom_init)
+    fix.(model[:unom], unom_init)
+    @time set_value.(model[:x0], x_est)
+    @time optimize!(model)
+    _, u_seq = value.(model[:x]), value.(model[:u])  
+    set_start_value.(model[:u], u_seq)  
+    
+
+    # Update particle process noise
+    for j in 1:M
+        noise_mat_val[:,:,j] = rand(prm,T)
+    end
+    fix.(model[:noise_mat], noise_mat_val)
+    return u_seq[:,1,1]
+end
+
