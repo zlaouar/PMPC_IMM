@@ -50,13 +50,14 @@ function stateEst(μ_prev, P_prev, u, z, SS)
 end
 
 function dynamics(x, u, SS, i)
-    F, G, Gfail, H = SS.F, SS.G, SS.Gfail, SS.H
+    F, G, Gmode, H = SS.F, SS.G, SS.Gmode, SS.H
+    R = Diagonal([0.2, 1, 1, 1, 1, 1]) + zeros(6, 6)
     if i < 40
         x_true = F * x + G * u - G * hex.unom
     else
-        x_true = F * x + Gfail * u - Gfail * hex.unom_fail
+        x_true = F * x + Gmode[2] * u - Gmode[2] * mpc.unom_vec[2]
     end
-    z = H * x_true + rand(mpc.Vd)
+    z = H * x_true# + rand(mpc.Vd)
 
     return x_true, z
 end
@@ -83,11 +84,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     P_hat = [sum((P_prev[i] + (x_hat[:,j]-x_prev[i])*(x_hat[:,j]-x_prev[i])')*μ_ij[i,j] for i in 1:num_modes) for j in 1:num_modes] # Mixing covariance
     #V = zeros(2,2)
     for j in 1:num_modes
-        if j == 1
-            x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * hex.unom# Predicted state
-        else
-            x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * hex.unom_fail
-        end
+        x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j] # Predicted state
         P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
@@ -173,13 +170,21 @@ function mfmpc()
         2) Failed Rotor 1
 
     """
-    π_mat = [0.95 0.05; # Mode Transition Matrix
-             0.05 0.95]
+    #π_mat = [0.95 0.05; # Mode Transition Matrix
+    #         0.05 0.95]
+    π_mat = [0.88 0.03 0.03 0.03 0.03 0.03 0.03;
+            0.005    0.97    0.005    0.005    0.005    0.005    0.005;
+            0.005    0.005    0.97    0.005    0.005    0.005    0.005;
+            0.005    0.005    0.005    0.97    0.005    0.005    0.005;
+            0.005    0.005    0.005    0.005    0.97    0.005    0.005;
+            0.005    0.005    0.005    0.005    0.005    0.97    0.005;
+            0.005    0.005    0.005    0.005    0.005    0.005    0.97]
 
     T = 10 # Prediction Horizon
     M = 8 # Number of Scenarios
 
-    num_modes = 2
+    #num_modes = 2
+    num_modes = 7
 
     delT = 0.1 # Timestep
     num_steps = 80
@@ -200,30 +205,37 @@ function mfmpc()
 
     x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-    means = [x0,x0]
-    covariances = [P,P]
-    μ0 = [0.03, 0.97] # Initial mode probabilities
+    #means = [x0,x0]
+    #covariances = [P,P]
+    means = [x0,x0,x0,x0,x0,x0,x0]
+    covariances = [P,P,P,P,P,P,P]
+    #μ0 = [0.03, 0.97] # Initial mode probabilities
+    μ0 = [0.94 0.01 0.01 0.01 0.01 0.01 0.01] # Initial mode probabilities
     bel0 = belief(means, covariances, μ0) # Initial Belief
     bel = bel0
     IMM_params = IMM(π_mat, num_modes, bel)
     bel_vec = belief[]
+    
     x_est_vec = Vector{Float64}[]
     x_true_vec = Vector{Float64}[]
     z_vec = Vector{Float64}[]
     u_vec = Vector{Float64}[]
     x_true = x0
     x_est = x0
+    push!(bel_vec, bel)
+    push!(x_est_vec, x_est)
+    push!(x_true_vec, x_true)
 
     Ginit = zeros(ns, T * na, M)
-    #zero_mat = Matrix(I, na, na)
+    zero_mat = Matrix(I, na, na)
     Gmode = SMatrix{12, 6, Float64}[]
     push!(Gmode, SMatrix{12, 6}(G))
-    push!(Gmode, SMatrix{12, 6}(Gfail))
-    #for i in 1:na
-    #    zero_mat[i,i] = 0
-    #    push!(Gmode, SMatrix{12, 6}(G * zero_mat))
-    #    zero_mat[i,i] = 1
-    #end
+    #push!(Gmode, SMatrix{12, 6}(Gfail))
+    for i in 1:na
+        zero_mat[i,i] = 0
+        push!(Gmode, SMatrix{12, 6}(G * zero_mat))
+        zero_mat[i,i] = 1
+    end
     SS = ssModel(F, G, Gfail, Gmode, H, D)
     unom_init = zeros(na,T,M)
 
@@ -257,14 +269,14 @@ function mfmpc()
     return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
 end
 
-bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps = mfmpc()
+bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps = @time mfmpc()
 
 #model = mfmpc()
 
 #@profiler optimize!(model)
 
 # Plotting and Analysis
-tvec = delT:delT:num_steps*delT
+tvec = 0:delT:num_steps*delT
 hex_pos_true = map(x -> x[1:3], x_true_vec)
 plt1 = plot(tvec, map(x -> x[1], hex_pos_true), xlabel = "time (secs)", ylabel = "x-position (m)", label = "true")
 plt2 = plot(tvec, map(x -> x[2], hex_pos_true), xlabel = "time (secs)", ylabel = "y-position (m)", label = "true")
@@ -283,18 +295,28 @@ display(plot(plt1, plt2, plt3, layout = (3,1), size=(600, 700)))
 probs = map(x -> x.mode_probs, bel_vec)
 prob1 = map(x -> x[1], probs)
 prob2 = map(x -> x[2], probs)
+prob3 = map(x -> x[3], probs)
+prob4 = map(x -> x[4], probs)
+prob5 = map(x -> x[5], probs)
+prob6 = map(x -> x[6], probs)
+prob7 = map(x -> x[7], probs)
 plot(tvec, prob1, label = "mode 1")
-display(plot!(tvec, prob2, label = "mode 2"))
+plot!(tvec, prob2, label = "mode 2")
+plot!(tvec, prob3, label = "mode 3")
+plot!(tvec, prob4, label = "mode 4")
+plot!(tvec, prob5, label = "mode 5")
+plot!(tvec, prob6, label = "mode 6")
+display(plot!(tvec, prob7, label = "mode 7"))
 title!("Mode Probabilities")
 xlabel!("time (sec)")
 ylabel!("probability")
 
 # Thrust Commands
-uplt1 = plot(tvec, map(u -> u[1], u_vec), label = :false)
-uplt2 = plot(tvec, map(u -> u[2], u_vec), label = :false)
-uplt3 = plot(tvec, map(u -> u[3], u_vec), label = :false)
-uplt4 = plot(tvec, map(u -> u[4], u_vec), label = :false)
-uplt5 = plot(tvec, map(u -> u[5], u_vec), label = :false)
-uplt6 = plot(tvec, map(u -> u[6], u_vec), label = :false)
+uplt1 = plot(tvec[2:end], map(u -> u[1], u_vec), label = :false)
+uplt2 = plot(tvec[2:end], map(u -> u[2], u_vec), label = :false)
+uplt3 = plot(tvec[2:end], map(u -> u[3], u_vec), label = :false)
+uplt4 = plot(tvec[2:end], map(u -> u[4], u_vec), label = :false)
+uplt5 = plot(tvec[2:end], map(u -> u[5], u_vec), label = :false)
+uplt6 = plot(tvec[2:end], map(u -> u[6], u_vec), label = :false)
 
 display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600, 700)))
