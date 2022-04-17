@@ -4,14 +4,14 @@ using LinearAlgebra
 using ParameterJuMP
 using Plots
 using Distributions
-using ElectronDisplay: electrondisplay
+# using ElectronDisplay: electrondisplay
 using LaTeXStrings
 using ControlSystems
 using StaticArrays
 
 import PMPC_IMM
 using PMPC_IMM.PMPC: umpc, IMM, ssModel, PMPCSetup, belief, genGmat!
-using PMPC_IMM.Hexacopter: LinearModel
+using PMPC_IMM.Hexacopter: LinearModel, simulate_nonlinear, MixMat
 
 const hex = PMPC_IMM.Hexacopter
 const mpc = PMPC_IMM.PMPC
@@ -63,7 +63,7 @@ function dynamics(x, u, SS, i)
 end
 
 function belief_updater(IMM_params::IMM, u, z, SS)
-    F, Gmode, H = SS.F, SS.Gmode, SS.H
+    F, Gmode, H, dt = SS.F, SS.Gmode, SS.H, SS.dt
     num_modes, π, bel = IMM_params.num_modes, IMM_params.π_mat, IMM_params.bel
     x_prev = bel.means
     P_prev = bel.covariances
@@ -84,14 +84,15 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     P_hat = [sum((P_prev[i] + (x_hat[:,j]-x_prev[i])*(x_hat[:,j]-x_prev[i])')*μ_ij[i,j] for i in 1:num_modes) for j in 1:num_modes] # Mixing covariance
     #V = zeros(2,2)
     for j in 1:num_modes
-        x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j] # Predicted state
-        P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
-        v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual
+        ####Filter Time
+        x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt))
+        P_hat[j] = Flin(x_hat[:,j]) * P_hat[j] * transpose(Flin(x_hat[:,j])) + mpc.W # Predicted covariance
+        v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
         push!(x_hat_u, x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]) # updated state
         P_hat[j] = P_hat[j] - K[:,:,j] * S[:,:,j] * transpose(K[:,:,j]) # updated covariance
-
+        ####
         # Mode Probability update and FDD logic
         MvL = MvNormal(Symmetric(S[:,:,j]))
         push!(L, pdf(MvL, v_arr[:,j]))
@@ -108,6 +109,26 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     #@show typeof(x_hat_u), typeof(P_hat), typeof(μ)
     return belief(x_hat_u, P_hat, μ), x
 end
+
+
+
+####EKF Functions and Variables
+function Flin(x)
+    #Construct Matrix Here
+    #return matrix
+end
+
+function nl_mode(u,mode::Int64;m=MixMat)
+    i_mat = I(6)
+    mode_ind = mode-1
+    if mode_ind != 0
+        i_mat[mode_ind,mode_ind] = 0
+    end
+    return m*i_mat*u
+end
+###############################
+
+
 #=
 function genGmat!(G, b, Gmode, T, M, nm)
     # Sample fault distribution
@@ -236,7 +257,7 @@ function mfmpc()
         push!(Gmode, SMatrix{12, 6}(G * zero_mat))
         zero_mat[i,i] = 1
     end
-    SS = ssModel(F, G, Gfail, Gmode, H, D)
+    SS = ssModel(F, G, Gfail, Gmode, H, D, delT)
     unom_init = zeros(na,T,M)
 
 

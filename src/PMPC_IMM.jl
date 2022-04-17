@@ -15,6 +15,7 @@ module Hexacopter
 include(joinpath("Hexacopter", "HexacopterLinear.jl"))
 export LinearModel
 export simulate_nonlinear
+export MixMat
 end
 
 module Cartpole

@@ -39,11 +39,11 @@ Bv[11,3] = 1/Jy
 Bv[12,4] = 1/Jz
 
 const W = [b b b b b b; b*l/2 b*l b*l/2 -b*l/2 -b*l -b*l/2; b*l*sqrt(3)/2 0 -b*l*sqrt(3)/2 -b*l*sqrt(3)/2 0 b*l*sqrt(3)/2; d -d d -d d -d]
-#const MixMat = [b                 b            b                  b           b          b        ;
+# const MixMat = [b                 b            b                  b           b          b        ;
 #               b*l/2             b*l         b*l/2             -b*l/2       -b*l      -b*l/2      ;
 #                b*l*sqrt(3)/2      0      -b*l*sqrt(3)/2     -b*l*sqrt(3)/2     0     b*l*sqrt(3)/2;
 #                d                 -d           d                 -d             d          -d      ]
- 
+
 const MixMat = [1                 1           1                  1             1          1       ;
                l/2                l          l/2               -l/2           -l        -l/2      ;
                l*sqrt(3)/2        0      -l*sqrt(3)/2     -l*sqrt(3)/2     0     l*sqrt(3)/2;
@@ -86,7 +86,9 @@ function simulate_nonlinear(x, u, t)
     dt = 0.01
     tspan = (0.0, t)
     xvec = Vector{Float64}[]
-    problem = ODEProblem(f!, x, tspan, p)
+    # @show typeof(x)
+    problem = ODEProblem(f!, [x...], tspan, p)
+    # @show p
     sol = solve(problem, adaptive = false, dt = 0.01)
 
     return sol
@@ -94,7 +96,9 @@ end
 
 function f!(du, u, pa, t)
     Jx, Jy, Jz, m, g, ufunc = pa
-    T, u_ϕ, u_θ, u_ψ = ufunc()
+    # @show ufunc
+    T, u_ϕ, u_θ, u_ψ = ufunc
+    # println(u)
     x, y, z, ϕ, θ, ψ, uu, v, w, p, q, r = u
     du[1] = cos(θ)*cos(ψ)*uu + (cos(ψ)*sin(ϕ)*sin(θ) - cos(ϕ)*sin(ψ))*v + (sin(ϕ)*sin(ψ) + cos(ϕ)*cos(ψ)*sin(θ))*w #x
     du[2] = cos(θ)*sin(ψ)*uu + (cos(ϕ)*cos(ψ) + sin(ϕ)*sin(θ)*sin(ψ))*v + (cos(ϕ)*sin(θ)*sin(ψ) - sin(ϕ)*cos(ψ))*w#y
@@ -109,4 +113,3 @@ function f!(du, u, pa, t)
     du[11] = ((Jz - Jx)/Jy)*p*r + u_θ/Jy  #q
     du[12] = ((Jx - Jy)/Jz)*p*q + u_ψ/Jz  #r
 end
-
