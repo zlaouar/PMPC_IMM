@@ -113,7 +113,44 @@ end
 
 
 ####EKF Functions and Variables
-function Flin(x)
+function Flin(x_i,u_i)
+    F = zeros(length(x_i),length(x_i))
+    x, y, z, ϕ, θ, ψ, uu, v, w, p, q, r = x_i
+    T,Mϕ,Mθ,Mψ = u_i
+    #x_dot eqns
+    F[1,4] = (cos(ψ)*sin(θ)*cos(ϕ)+sin(ϕ)*sin(ψ))*v+(cos(ϕ)*sin(ψ)-sin(ϕ)*cos(ψ)*sin(θ))*w
+    F[1,5] =
+    F[1,6] =
+    F[1,7] =
+    F[1,8] =
+    F[1,9] =
+    #y_dot eqns
+    F[2,4] =
+    F[2,5] =
+    F[2,6] =
+    F[2,7] =
+    F[2,8] =
+    F[2,9] =
+    #z_dot eqns
+    F[3,4] =
+    F[3,5] =
+    F[3,6] =
+    F[3,7] =
+    F[3,8] =
+    #phi_dot eqns
+    F[4,4] =
+    F[4,5] =
+    F[4,6] =
+    F[4,10] =
+    F[4,11] =
+    F[4,12] =
+    #theta_dot eqns
+    F[5,4] =
+    F[5,5] =
+    F[5,6] =
+    F[5,10] =
+    F[5,11] =
+    F[5,12] =
     #Construct Matrix Here
     #return matrix
 end
