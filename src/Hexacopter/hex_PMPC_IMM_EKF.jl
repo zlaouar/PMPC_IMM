@@ -113,7 +113,7 @@ end
 
 
 ####EKF Functions and Variables
-function Flin(x_i,u_i,dt,g,Kt,Kd,m)
+function Flin(x_i,u_i,dt,g,Kt,Kd,m,Iyy,Ixx,Izz,Jr,Ω)
     F = zeros(length(x_i),length(x_i))
     x, y, z, ϕ, θ, ψ, uu, v, w, p, q, r = x_i
     T,Mϕ,Mθ,Mψ = u_i
@@ -173,9 +173,26 @@ function Flin(x_i,u_i,dt,g,Kt,Kd,m)
     F[8,9] =  p -(Kd/m)*v*dV/dw
     F[8,10] = w
     F[8,12] = -uu
+    #w_dot eqns
+    F[9,4] = -g*sin(ϕ)*cos(θ)
+    F[9,5] = -g*cos(θ)*sin(θ)
+    F[9,7] = q-(Kd/m)*w*dVduu
+    F[9,8] = -p-(Kd/m)*w*dVdv
+    F[9,9] = -(Kd/m)*V-(Kd/m)*w*dVdw
+    F[9,10] = -v
+    F[9,11] = u
+    #p_dot eqns
+    F[10,11] = r*(Iyy-Izz)/Ixx-(Jr*Ω)/Ixx
+    F[10,12] = q*(Iyy-Izz)/Ixx
+    #q_dot eqns
+    F[11,10] = r*(Izz-Ixx)/Iyy+(Jr*Ω)/Iyy
+    F[11,12] = p*(Izz-Ixx)/Iyy
+    #r_dot eqns
+    F[12,10] = q*(Ixx-Iyy)/Izz
+    F[12,11] = p*(Ixx-Iyy)/Izz
     #Construct Matrix Here
     ##CONVERT TO DT
-    #return matrix
+    return F
 end
 
 function nl_mode(u,mode::Int64;m=MixMat)
