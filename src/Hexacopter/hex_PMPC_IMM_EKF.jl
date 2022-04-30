@@ -125,12 +125,12 @@ function Flin(x_i,u_i,dt)
     F[1,8] = cos(ψ)*sin(ϕ)*sin(θ)-cos(ϕ)*sin(ψ)
     F[1,9] = sin(ϕ)*sin(ψ)+cos(ϕ)*cos(ψ)*sin(θ)
     #y_dot eqns
-    F[2,4] =
-    F[2,5] =
-    F[2,6] =
-    F[2,7] =
-    F[2,8] =
-    F[2,9] =
+    F[2,4] = (-sin(ϕ)*cos(ψ)+cos(ϕ)*sin(θ)*sin(ψ))v+(-sin(ϕ)*sin(θ)*sin(ψ)-cos(ϕ)*cos(ψ))*w
+    F[2,5] = -(sin(θ)*cos(ψ))*uu+(cos(ψ)*sin(ϕ)*cos(θ))*v+(cos(ϕ)*cos(ψ)*cos(θ))*w
+    F[2,6] = -(cos(θ)*sin(ψ))*uu-(cos(ϕ)*sin(ψ)+cos(ϕ)*cos(ψ))*v+(sin(ϕ)*cos(ψ)-cos(ϕ)*sin(ψ)*sin(θ))*w
+    F[2,7] = cos(θ)*sin(ψ)
+    F[2,8] = cos(ϕ)*cos(ψ)+sin(ϕ)*sin(θ)*sin(ψ)
+    F[2,9] = cos(ϕ)*sin(θ)*sin(ψ)-sin(ϕ)*cos(ψ)
     #z_dot eqns
     F[3,4] =
     F[3,5] =
