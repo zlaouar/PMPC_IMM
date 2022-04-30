@@ -113,17 +113,17 @@ end
 
 
 ####EKF Functions and Variables
-function Flin(x_i,u_i)
+function Flin(x_i,u_i,dt)
     F = zeros(length(x_i),length(x_i))
     x, y, z, ϕ, θ, ψ, uu, v, w, p, q, r = x_i
     T,Mϕ,Mθ,Mψ = u_i
     #x_dot eqns
     F[1,4] = (cos(ψ)*sin(θ)*cos(ϕ)+sin(ϕ)*sin(ψ))*v+(cos(ϕ)*sin(ψ)-sin(ϕ)*cos(ψ)*sin(θ))*w
-    F[1,5] =
-    F[1,6] =
-    F[1,7] =
-    F[1,8] =
-    F[1,9] =
+    F[1,5] = -(sin(θ)*cos(ψ))*uu+(cos(ψ)*sin(ϕ)*cos(θ))*v+(cos(ϕ)*cos(ψ)*cos(θ))*w
+    F[1,6] = -(cos(θ)*sin(ψ))*uu-(cos(ϕ)*sin(ψ)+cos(ϕ)*cos(ψ))*v+(sin(ϕ)*cos(ψ)-cos(ϕ)*sin(ψ)*sin(θ))*w
+    F[1,7] = cos(θ)*cos(ψ)
+    F[1,8] = cos(ψ)*sin(ϕ)*sin(θ)-cos(ϕ)*sin(ψ)
+    F[1,9] = sin(ϕ)*sin(ψ)+cos(ϕ)*cos(ψ)*sin(θ)
     #y_dot eqns
     F[2,4] =
     F[2,5] =
@@ -152,6 +152,7 @@ function Flin(x_i,u_i)
     F[5,11] =
     F[5,12] =
     #Construct Matrix Here
+    ##CONVERT TO DT
     #return matrix
 end
 
