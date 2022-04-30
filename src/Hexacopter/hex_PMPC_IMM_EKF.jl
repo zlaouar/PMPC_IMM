@@ -113,7 +113,7 @@ end
 
 
 ####EKF Functions and Variables
-function Flin(x_i,u_i,dt)
+function Flin(x_i,u_i,dt,g,Kt,Kd,m)
     F = zeros(length(x_i),length(x_i))
     x, y, z, ϕ, θ, ψ, uu, v, w, p, q, r = x_i
     T,Mϕ,Mθ,Mψ = u_i
@@ -144,12 +144,35 @@ function Flin(x_i,u_i,dt)
     F[4,11] = sin(ϕ)*tan(θ)
     F[4,12] = cos(ϕ)*tan(θ)
     #theta_dot eqns
-    F[5,4] =
-    F[5,5] =
-    F[5,6] =
-    F[5,10] =
-    F[5,11] =
-    F[5,12] =
+    F[5,4] = -sin(ϕ)*q-cos(ϕ)*r
+    F[5,11] = cos(ϕ)
+    F[5,12] = -sin(ϕ)
+    #psi_dot eqns
+    F[6,4] = cos(ϕ)*sec(θ)*q-sin(ϕ)*sec(θ)*r
+    F[6,5] = sin(ϕ)*tan(θ)*sec(θ)*q+cos(θ)*tan(θ)*sec(θ)*r
+    F[6,11] = sin(ϕ)*sec(θ)
+    F[6,12] = cos(ϕ)*sec(θ)
+    ##V Partials
+    dVduu = uu*(uu^2+v^2+w^2)^-(1/2)
+    dVdv = uu*(uu^2+v^2+w^2)^-(1/2)
+    dVdw = uu*(uu^2+v^2+w^2)^-(1/2)
+    V = sqrt(uu^2+v^2+w^2)
+    ##
+    #u_dot eqns
+    F[7,5] = -g*cos(θ)
+    F[7,7] = -(Kt/m)-(Kd/m)*V-uu*(Kd/m)*dVduu
+    F[7,8] = r-(Kd/m)*u*dVdv
+    F[7,9] = -q-(Kd/m)*u*dVdw
+    F[7,11] = -w
+    F[7,12] = v
+    #v_dot eqns
+    F[8,4] = g*cos(θ)*cos(ϕ)
+    F[8,5] = -sin(θ)*sin(ϕ)*g
+    F[8,7] = -r-(Kd/m)*v*dVduu
+    F[8,8] = -(Kt/m)-(Kd/m)*V-v*(Kd/m)*dVdv
+    F[8,9] =  p -(Kd/m)*v*dV/dw
+    F[8,10] = w
+    F[8,12] = -uu
     #Construct Matrix Here
     ##CONVERT TO DT
     #return matrix
