@@ -24,7 +24,7 @@ const Vd = MvNormal(V)
 
 const prm = MvNormal(W)
 
-const unom_vec = [[m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6], 
+const unom_vec = [[m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6],
                   [0, m*g/4, m*g/4, 0, m*g/4, m*g/4],
                   [m*g/4, 0, m*g/4, m*g/4, 0, m*g/4],
                   [m*g/4, m*g/4, 0, m*g/4, m*g/4, 0],
@@ -43,7 +43,7 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
 
     prm = MvNormal(W)
 
-    
+
     xinit = [0 0 -10 0 0 0 0 0 0 0 0 0]
 
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
@@ -53,10 +53,10 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
     xrefval = waypoints[3,:]
     @show unom_init
     # Init Model
-    
+
     model = Model(Ipopt.Optimizer)
     #MOI.set(model, Gurobi.ModelAttribute("IsQP"), 2)
-    
+
     #optimize!(model)
     set_silent(model)
     @variables(model, begin
@@ -71,8 +71,8 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
     @objective(model, Min, (1/M) * sum(sum(dot(x[:,j,i]-xrefval, Q, x[:,j,i]-xrefval) + dot(u[:,j], R, u[:,j]) for j in 1:T) for i in 1:M))
 
     # Initial Conditions
-    x0 = @variable(model,x0[i=1:ns] == xinit[i], Param()) 
-    
+    x0 = @variable(model,x0[i=1:ns] == xinit[i], Param())
+
     for m = 1:M
         @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, na * (j-2) + 1:na * (j-1), m] * u[:,j-1]
                                                 - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom[:,j,m] )#+ noise_mat[:,j,m])
@@ -112,6 +112,17 @@ mutable struct ssModel
     Gmode::Vector{SMatrix{12, 6, Float64}}
     H::SMatrix{3,12,Float64}
     D::SMatrix{3,6,Float64}
+    dt::Float64
+end
+
+mutable struct ssModelm
+    F::Matrix{Float64}
+    G::Matrix{Float64}
+    Gfail::Matrix{Float64}
+    Gmode::Vector{SMatrix{12, 6, Float64}}
+    H::Matrix{Float64}
+    D::Matrix{Float64}
+    dt::Float64
 end
 
 function genGmat!(G, unom_init, b, Gmode, T, M, nm)
@@ -137,7 +148,7 @@ function genGmat!(G, unom_init, b, Gmode, T, M, nm)
 
                 if failed_rotor != 0
                     G[:, na*(i-1)+1:na*i, j] = Gmode[failed_rotor + 1]
-                    @show failed_rotor
+                    # @show failed_rotor
                     unom_init[:,i:end,j] = repeat(unom_vec[failed_rotor + 1], 1, T-i+1)
                     gvec[i] = 1
                     for k in i+1:T
@@ -167,9 +178,9 @@ function umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init
     #display(MOI.get(model, Gurobi.ModelAttribute("IsQP")))
     @time set_value.(model[:x0], x_est)
     @time optimize!(model)
-    _, u_seq = value.(model[:x]), value.(model[:u])  
-    set_start_value.(model[:u], u_seq)  
-    
+    _, u_seq = value.(model[:x]), value.(model[:u])
+    set_start_value.(model[:u], u_seq)
+
 
     # Update particle process noise
     for j in 1:M
@@ -178,4 +189,3 @@ function umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init
     fix.(model[:noise_mat], noise_mat_val)
     return u_seq[:,1]
 end
-

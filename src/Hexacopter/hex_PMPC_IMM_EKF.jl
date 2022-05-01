@@ -62,6 +62,16 @@ function dynamics(x, u, SS, i)
     return x_true, z
 end
 
+function nl_dynamics(x, u, SS, i)
+    dt, H = SS.dt, SS.H
+    # if i < 40
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))
+    # else
+        # x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))
+    # end
+    return x_true, H*x_true
+end
+
 function belief_updater(IMM_params::IMM, u, z, SS)
     F, Gmode, H, dt = SS.F, SS.Gmode, SS.H, SS.dt
     num_modes, π, bel = IMM_params.num_modes, IMM_params.π_mat, IMM_params.bel
@@ -85,8 +95,13 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     #V = zeros(2,2)
     for j in 1:num_modes
         ####Filter Time
-        x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt))
-        P_hat[j] = Flin(x_hat[:,j]) * P_hat[j] * transpose(Flin(x_hat[:,j])) + mpc.W # Predicted covariance
+        println()
+        println("Estimates =======")
+        # println(last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)))
+        # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
+        x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j] # Predicted state
+        # P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
+        P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
@@ -100,7 +115,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     for j in 1:num_modes
         push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
-
+    @show μ
     # Combination of Estimates
     x = sum(x_hat_u[j] * μ[j] for j in 1:num_modes) # overall estimate
     P = sum((P_hat[j] + (x - x_hat_u[j]) * transpose(x - x_hat_u[j])) * μ[j] for j in 1:num_modes) # overall covariance
@@ -113,10 +128,9 @@ end
 
 
 ####EKF Functions and Variables
-function Flin(x_i,u_i,dt,g,Kt,Kd,m,Iyy,Ixx,Izz,Jr,Ω)
+function Alin(x_i;g=9.81,Kt=3.23e-5,Kd=7.5e-3,m=2.4,Iyy=5.126E-3,Ixx=5.126E-3,Izz=1.3E-2,Jr=0,Ω=0)
     F = zeros(length(x_i),length(x_i))
     x, y, z, ϕ, θ, ψ, uu, v, w, p, q, r = x_i
-    T,Mϕ,Mθ,Mψ = u_i
     #x_dot eqns
     F[1,4] = (cos(ψ)*sin(θ)*cos(ϕ)+sin(ϕ)*sin(ψ))*v+(cos(ϕ)*sin(ψ)-sin(ϕ)*cos(ψ)*sin(θ))*w
     F[1,5] = -(sin(θ)*cos(ψ))*uu+(cos(ψ)*sin(ϕ)*cos(θ))*v+(cos(ϕ)*cos(ψ)*cos(θ))*w
@@ -156,13 +170,22 @@ function Flin(x_i,u_i,dt,g,Kt,Kd,m,Iyy,Ixx,Izz,Jr,Ω)
     dVduu = uu*(uu^2+v^2+w^2)^-(1/2)
     dVdv = uu*(uu^2+v^2+w^2)^-(1/2)
     dVdw = uu*(uu^2+v^2+w^2)^-(1/2)
+    if isnan(dVduu)
+        dVduu = 0
+    end
+    if isnan(dVdv)
+        dVdv = 0
+    end
+    if isnan(dVdw)
+        dVdw = 0
+    end
     V = sqrt(uu^2+v^2+w^2)
     ##
     #u_dot eqns
     F[7,5] = -g*cos(θ)
     F[7,7] = -(Kt/m)-(Kd/m)*V-uu*(Kd/m)*dVduu
-    F[7,8] = r-(Kd/m)*u*dVdv
-    F[7,9] = -q-(Kd/m)*u*dVdw
+    F[7,8] = r-(Kd/m)*uu*dVdv
+    F[7,9] = -q-(Kd/m)*uu*dVdw
     F[7,11] = -w
     F[7,12] = v
     #v_dot eqns
@@ -170,7 +193,7 @@ function Flin(x_i,u_i,dt,g,Kt,Kd,m,Iyy,Ixx,Izz,Jr,Ω)
     F[8,5] = -sin(θ)*sin(ϕ)*g
     F[8,7] = -r-(Kd/m)*v*dVduu
     F[8,8] = -(Kt/m)-(Kd/m)*V-v*(Kd/m)*dVdv
-    F[8,9] =  p -(Kd/m)*v*dV/dw
+    F[8,9] =  p -(Kd/m)*v*dVdw
     F[8,10] = w
     F[8,12] = -uu
     #w_dot eqns
@@ -180,7 +203,7 @@ function Flin(x_i,u_i,dt,g,Kt,Kd,m,Iyy,Ixx,Izz,Jr,Ω)
     F[9,8] = -p-(Kd/m)*w*dVdv
     F[9,9] = -(Kd/m)*V-(Kd/m)*w*dVdw
     F[9,10] = -v
-    F[9,11] = u
+    F[9,11] = uu
     #p_dot eqns
     F[10,11] = r*(Iyy-Izz)/Ixx-(Jr*Ω)/Ixx
     F[10,12] = q*(Iyy-Izz)/Ixx
@@ -198,10 +221,15 @@ end
 function nl_mode(u,mode::Int64;m=MixMat)
     i_mat = I(6)
     mode_ind = mode-1
+    @show mode_ind
     if mode_ind != 0
         i_mat[mode_ind,mode_ind] = 0
     end
     return m*i_mat*u
+end
+
+function ct2dt(mat,dt)
+    return I+dt*mat
 end
 ###############################
 
@@ -352,7 +380,7 @@ function mfmpc()
         u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
-        x_true, z = dynamics(x_true, u, SS, i)
+        x_true, z = nl_dynamics(x_true, u, SS, i) #Update to NL
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
         bel, x_est = belief_updater(IMM_params, u, z, SS)
         IMM_params.bel = bel

@@ -8,7 +8,7 @@ import JuMP
 
 module PMPC
 include(joinpath("PMPC", "PMPC_Jump.jl"))
-export umpc, IMM, ssModel, PMPCSetup, belief, genGmat!
+export umpc, IMM, ssModel, ssModelm, PMPCSetup, belief, genGmat!
 end
 
 module Hexacopter
