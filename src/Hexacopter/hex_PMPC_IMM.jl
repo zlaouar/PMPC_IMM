@@ -133,7 +133,7 @@ function mfmpc()
     #num_modes = 2
     num_modes = 7
 
-    delT = 0.1 # Timestep
+    Δt = 0.1 # Timestep
     num_steps = 80
 
     ns = 12 # number of states
@@ -143,7 +143,7 @@ function mfmpc()
     lin_model = LinearModel()
     A, B, C, D = lin_model.A, lin_model.B, lin_model.C, lin_model.D
     sys = ss(A, B, C, D)
-    sysd = c2d(sys, delT)
+    sysd = c2d(sys, Δt)
     F, G, H, D = sysd.A, sysd.B, sysd.C, sysd.D
     L = dlqr(F, G, Q, R) # lqr(sys,Q,R) can also be used
 
@@ -183,7 +183,7 @@ function mfmpc()
         push!(Gmode, SMatrix{12, 6}(G * zero_mat))
         zero_mat[i,i] = 1
     end
-    SS = ssModel(F, G, Gfail, Gmode, H, D)
+    SS = ssModel(F, G, Gfail, Gmode, H, D, Δt)
     unom_init = zeros(na,T,M)
 
     
@@ -213,17 +213,17 @@ function mfmpc()
         push!(u_vec, u)
         @show i
     end
-    return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
+    return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, Δt, num_steps
 end
 
-bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps = @time mfmpc()
+bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, Δt, num_steps = @time mfmpc()
 
 #model = mfmpc()
 
 #@profiler optimize!(model)
 
 # Plotting and Analysis
-tvec = 0:delT:num_steps*delT
+tvec = 0:Δt:num_steps*Δt
 hex_pos_true = map(x -> x[1:3], x_true_vec)
 plt1 = plot(tvec, map(x -> x[1], hex_pos_true), xlabel = "time (secs)", ylabel = "x-position (m)", label = "true")
 plt2 = plot(tvec, map(x -> x[2], hex_pos_true), xlabel = "time (secs)", ylabel = "y-position (m)", label = "true")

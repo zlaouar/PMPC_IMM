@@ -52,11 +52,11 @@ end
 function dynamics(x, u, SS, i)
     F, G, Gmode, H = SS.F, SS.G, SS.Gmode, SS.H
     R = Diagonal([0.2, 1, 1, 1, 1, 1]) + zeros(6, 6)
-    if i < 40
+    #if i < 40
         x_true = F * x + G * u - G * hex.unom
-    else
+    #else
         x_true = F * x + Gmode[2] * u - Gmode[2] * mpc.unom_vec[2]
-    end
+    #end
     z = H * x_true# + rand(mpc.Vd)
 
     return x_true, z
