@@ -11,7 +11,7 @@ sys = ss(A, B, C, D)
 delT = 0.1
 T = 10
 t=0:delT:T
-x_ref = [0,0,-5,0,0,0,0,0,0,0,0,0]
+x_ref = [0,2,-5,0,0,0,0,0,0,0,0,0]
 x0 = [0,0,-10,0,0,0,0,0,0,0,0,0]
 m = 2.4
 g = 9.81
@@ -70,6 +70,7 @@ function simulate(x_est, x_est_nl, unom)
         ulqr = - L * (x_est - x_ref)
         ufull = ulqr + unom 
         usat = maximum([minimum([ones(6) * 15.5, ufull]), zeros(6)])
+        usat = unom .+ 1
         x_est = F * x_est + G * usat - G * unom
         x_est_nl = last(simulate_nonlinear(x_est_nl, lin_model.MixMat*usat, delT))
         push!(xvec, x_est)
@@ -96,11 +97,11 @@ plot!(plt1, tvec, map(x -> x[1], hex_pos_true_nl), label = "nonlin")
 ylims!((-1,1))
 plt2 = plot(tvec, map(x -> x[2], hex_pos_true), xlabel = "time (secs)", ylabel = "y-position (m)", label = "linear")
 plot!(plt2, tvec, map(x -> x[2], hex_pos_true_nl), label = "nonlin")
-ylims!((-1,3))
+ylims!((-10,3))
 plt3 = plot(tvec, -map(x -> x[3], hex_pos_true), xlabel = "time (secs)", ylabel = "z-position (m)", label = "linear")
 #plot!(plt3, tvec, -y[3,2:end], label = "lsim")
 plot!(plt3, tvec, -map(x -> x[3], hex_pos_true_nl), label = "nonlin")
-ylims!((-5,11))
+ylims!((-5,15))
 display(plot(plt1, plt2, plt3, layout = (3,1), size=(600, 700)))
 
 #=
