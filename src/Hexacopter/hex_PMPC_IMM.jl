@@ -3,6 +3,7 @@ using Ipopt
 using LinearAlgebra
 using ParameterJuMP
 using Plots
+#using PlotlyJS
 using Distributions
 using ElectronDisplay: electrondisplay
 using LaTeXStrings
@@ -108,61 +109,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     #@show typeof(x_hat_u), typeof(P_hat), typeof(μ)
     return belief(x_hat_u, P_hat, μ), x
 end
-#=
-function genGmat!(G, b, Gmode, T, M, nm)
-    # Sample fault distribution
-    #@show b.mode_probs
-    dist = Categorical(b.mode_probs)
-    sampled_inds = rand(dist, M)
-    #@show sampled_inds
-    gvec = zeros(T)
 
-    failed_rotor = 0
-    for j = 1:M
-        if sampled_inds[j] == 1 # nominal particle
-            for i in 1:T
-                rand_fail = rand()
-                if rand_fail < 0.03
-                    failed_rotor = 1
-                else
-                    G[:, nm*(i-1)+1:nm*i, j] = Gmode[1]
-                end
-                #=elseif rand_fail > 0.03 && rand_fail < 0.06
-                    failed_rotor = 2
-                elseif rand_fail > 0.06 && rand_fail < 0.09
-                    failed_rotor = 3
-                elseif rand_fail > 0.09 && rand_fail < 0.12
-                    failed_rotor = 4
-                elseif rand_fail > 0.12 && rand_fail < 0.15
-                    failed_rotor = 5
-                elseif rand_fail > 0.15 && rand_fail < 0.18
-                    failed_rotor = 6
-
-                else
-                    G[:, nm*(i-1)+1:nm*i, j] = Gmode[1]
-                end=#
-
-                if failed_rotor != 0
-                    G[:, nm*(i-1)+1:nm*i, j] = Gmode[failed_rotor + 1]
-                    gvec[i] = 1
-                    for k in i+1:T
-                        G[:, nm*(k-1)+1:nm*k, j] = Gmode[failed_rotor + 1]
-                        gvec[k] = 1
-                    end
-                    break
-                end
-                failed_rotor = 0
-
-            end
-        else # failure particle
-            G[:, :, j] = repeat(Gmode[sampled_inds[j]], 1, T)
-        end
-    end
-
-
-    return G
-end
-=#
 function mfmpc()
     """
     Simulate PMPC control of Hexacopter with 2 modes:

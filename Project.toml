@@ -4,6 +4,7 @@ authors = ["zaki <zakariya.laouar@colorado.edu>"]
 version = "0.1.0"
 
 [deps]
+COSMO = "1e616198-aa4e-51ec-90a2-23f7fbd31d8d"
 ControlSystems = "a6e380b2-a6ca-5380-bf3e-84a91bcd477e"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -16,8 +17,10 @@ LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MeshCat = "283c5d60-a78f-5afe-a0af-af636b173e11"
 OSQP = "ab2f91bb-94b4-55e3-9ba0-7f65df51de79"
+POMDPModelTools = "08074719-1b2a-587c-a292-00f91cc44415"
 ParameterJuMP = "774612a8-9878-5177-865a-ca53ae2495f9"
 Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+PlotlyJS = "f0f68f2c-4968-5e81-91da-67840de0976a"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 SCS = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
