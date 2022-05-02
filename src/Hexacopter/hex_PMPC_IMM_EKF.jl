@@ -13,7 +13,7 @@ import PMPC_IMM
 using PMPC_IMM.PMPC: umpc, IMM, ssModel, PMPCSetup, belief, genGmat!
 using PMPC_IMM.Hexacopter: LinearModel, simulate_nonlinear, MixMat
 
-const hex = PMPC_IMM.Hexacopter
+const hex = PMPC_IMM.Hexacopterd
 const mpc = PMPC_IMM.PMPC
 
 # LQR Params
@@ -79,11 +79,11 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     P_prev = bel.covariances
     μ_prev = bel.mode_probs
 
-    S = Array{Float64, 3}(undef, 3, 3, num_modes)
-    K = Array{Float64, 3}(undef, 12, 3, num_modes)
+    S = Array{Float64, 3}(undef, 6, 6, num_modes)
+    K = Array{Float64, 3}(undef, 12, 6, num_modes)
     x_hat_p = Array{Float64, 2}(undef, 12, num_modes)
     x_hat_u = Vector{Float64}[]
-    v_arr = Array{Float64, 2}(undef, 3, num_modes)
+    v_arr = Array{Float64, 2}(undef, 6, num_modes)
     L = Float64[]
     μ = Float64[]
 
