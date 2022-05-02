@@ -102,23 +102,30 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
         P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
         # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
-        v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
+        v_arr[:,j] = z - H * wrapitup(x_hat_p[:,j]) # measurement residual, H is truly linear here
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
-        push!(x_hat_u, x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]) # updated state
+        x_predf =  x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]
+        x_predf = wrapitup(x_predf)
+        push!(x_hat_u,x_predf) # updated state
         P_hat[j] = P_hat[j] - K[:,:,j] * S[:,:,j] * transpose(K[:,:,j]) # updated covariance
-        @show round.(x_hat_p[:,j] + K[:,:,j] * v_arr[:,j],digits=3)
+
+        @show round.(x_predf,digits=3)
         ####
         # Mode Probability update and FDD logic
         MvL = MvNormal(Symmetric(S[:,:,j]))
         push!(L, pdf(MvL, v_arr[:,j]))
     end
+    @show MvNormal(Symmetric(S[:,:,1]))
+    @show v_arr[:,1]
+    @show L
+    @show μ_pred
     for j in 1:num_modes
         push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
     @show μ
     # Combination of Estimates
-    x = sum(x_hat_u[j] * μ[j] for j in 1:num_modes) # overall estimate
+    x = wrapitup(sum(x_hat_u[j] * μ[j] for j in 1:num_modes)) # overall estimate
     P = sum((P_hat[j] + (x - x_hat_u[j]) * transpose(x - x_hat_u[j])) * μ[j] for j in 1:num_modes) # overall covariance
     #@show P_hat
     #pprintln(P_hat)
@@ -129,7 +136,7 @@ end
 
 
 ####EKF Functions and Variables
-function Alin(x_i;g=9.81,Kt=3.23e-5,Kd=7.5e-3,m=2.4,Iyy=5.126E-3,Ixx=5.126E-3,Izz=1.3E-2,Jr=0,Ω=0)
+function Alin(x_i;g=9.81,Kt=0.0,Kd=0.0,m=2.4,Iyy=5.126E-3,Ixx=5.126E-3,Izz=1.3E-2,Jr=0,Ω=0) #Kt=3.23e-5,Kd=7.5e-3
     F = zeros(length(x_i),length(x_i))
     x, y, z, ϕ, θ, ψ, uu, v, w, p, q, r = x_i
     #x_dot eqns
@@ -376,20 +383,39 @@ function mfmpc()
     model = PMPCSetup(T, M, SS, Gmat, unom_init, noise_mat_val)
     #return model
     P_next = P
+    p_ekf = P
+    x_ekf = x0
     @show x0
     for i in 1:num_steps
         # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        @show MixMat*u
+        # @show MixMat*u
         # u = [1,1,1,1,1,1].*(2.4*9.81)/6
         # @show u
         @show MixMat*u
         #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
+        println("================")
+        nlf_est = ct2dt(Alin(x_true),SS.dt)*x_true+SS.G*u
         x_true, z = nl_dynamics(x_true, u, SS, i) #Update to NL
-        @show round.(x_true,digits=3)
+        x_true = wrapitup(x_true)
+        # @show z
+        # @show round.(x_true,digits=3)
+        display([x_true nlf_est])
+        println("================")
+        x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H;dt=SS.dt)
+        # @show round.(x_ekf,digits=3)
+        # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
         bel, x_est = belief_updater(IMM_params, u, z, SS)
+        x_ekf = x_est
+        @show round.(x_est,digits=3)
+        # println("================")
+        # @show x_true-x_est
+        # println("================")
+        # if norm(x_true-x_est) > 300
+        #     throw("Est and State disagree!")
+        # end
         IMM_params.bel = bel
         # IMM_params.bel = belief(bel.means,bel.covariances,[0.75,0.25,0,0,0,0,0])
 
@@ -399,23 +425,24 @@ function mfmpc()
         push!(z_vec, z)
         push!(u_vec, u)
         @show i
-        probs = map(x -> x.mode_probs, bel_vec)
-        prob1 = map(x -> x[1], probs)
-        prob2 = map(x -> x[2], probs)
-        prob3 = map(x -> x[3], probs)
-        prob4 = map(x -> x[4], probs)
-        prob5 = map(x -> x[5], probs)
-        prob6 = map(x -> x[6], probs)
-        prob7 = map(x -> x[7], probs)
-        plt = plot(1:length(prob1), prob1, label = "mode 1")
-        plot!(plt,1:length(prob1), prob2, label = "mode 2")
-        plot!(plt,1:length(prob1), prob3, label = "mode 3")
-        plot!(plt,1:length(prob1), prob4, label = "mode 4")
-        plot!(plt,1:length(prob1), prob5, label = "mode 5")
-        plot!(plt,1:length(prob1), prob6, label = "mode 6")
-        plot!(plt,1:length(prob1), prob7, label = "mode 7")
-        plot!(legend=false)
-        display(plt)
+        println()
+        # probs = map(x -> x.mode_probs, bel_vec)
+        # prob1 = map(x -> x[1], probs)
+        # prob2 = map(x -> x[2], probs)
+        # prob3 = map(x -> x[3], probs)
+        # prob4 = map(x -> x[4], probs)
+        # prob5 = map(x -> x[5], probs)
+        # prob6 = map(x -> x[6], probs)
+        # prob7 = map(x -> x[7], probs)
+        # plt = plot(1:length(prob1), prob1, label = "mode 1")
+        # plot!(plt,1:length(prob1), prob2, label = "mode 2")
+        # plot!(plt,1:length(prob1), prob3, label = "mode 3")
+        # plot!(plt,1:length(prob1), prob4, label = "mode 4")
+        # plot!(plt,1:length(prob1), prob5, label = "mode 5")
+        # plot!(plt,1:length(prob1), prob6, label = "mode 6")
+        # plot!(plt,1:length(prob1), prob7, label = "mode 7")
+        # plot!(legend=false)
+        # display(plt)
     end
 
     return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
@@ -474,8 +501,8 @@ uplt6 = plot(tvec[2:end], map(u -> u[6], u_vec), label = :false)
 display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600, 700)))
 
 ###BEN TESTING
-function ekf(x,P_hat0,z,u;H=H,dt=delT)
-    x_hat_p = last(simulate_nonlinear(x,u,dt)) # Predicted state
+function ekf(x,P_hat0,z,u,H;dt=delT)
+    x_hat_p = last(simulate_nonlinear(x,MixMat*u,dt)) # Predicted state
     P_hat = ct2dt(Alin(x),dt) * P_hat0 * transpose(ct2dt(Alin(x),dt)) + mpc.W # Predicted covariance
     v_arr = z - H * x_hat_p # measurement residual, H is truly linear here
     S = H * P_hat * transpose(H) + mpc.V # residual covariance
@@ -486,6 +513,27 @@ function ekf(x,P_hat0,z,u;H=H,dt=delT)
     return x_hat_u,P_hat_u
 end
 
+function wrapitup(x)
+    x_new = deepcopy(x)
+    for (i,r) in enumerate(x[4:6])
+        #@show i,r
+        if r > pi && r <= 2*pi
+            x_new[i+3] = -2*pi+r
+        elseif r < -pi && r >= -2*pi
+            x_new[i+3] = 2*pi+r
+        elseif abs(r) > 2*pi
+             rint = r%(2*pi)
+             if rint > pi && rint <= 2*pi
+                 x_new[i+3] = -2*pi+rint
+             elseif rint < -pi && rint >= -2*pi
+                 x_new[i+3] = 2*pi+rint
+             else
+                 x_new[i+3] = rint
+             end
+        end
+    end
+    return x_new
+end
 o_mat = [H;H*A;H*A^2;H*A^3;H*A^4;H*A^5;H*A^6;H*A^7;H*A^8;H*A^9;H*A^10;H*A^11]
 [H2;H2*A;H2*A^2;H2*A^3;H2*A^4;H2*A^5;H2*A^6;H2*A^7;H2*A^8;H2*A^9;H2*A^10;H2*A^11]
 H2 = [H; zeros(3,3) I zeros(3,6)]
