@@ -95,18 +95,19 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     #V = zeros(2,2)
     for j in 1:num_modes
         ####Filter Time
-        println()
-        println("Estimates =======")
+        # println()
+        # println("Estimates =======")
         # println(last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)))
         # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
-        x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j] # Predicted state
-        # P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
-        P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
+        x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
+        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
+        # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
         push!(x_hat_u, x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]) # updated state
         P_hat[j] = P_hat[j] - K[:,:,j] * S[:,:,j] * transpose(K[:,:,j]) # updated covariance
+        @show round.(x_hat_p[:,j] + K[:,:,j] * v_arr[:,j],digits=3)
         ####
         # Mode Probability update and FDD logic
         MvL = MvNormal(Symmetric(S[:,:,j]))
@@ -221,7 +222,7 @@ end
 function nl_mode(u,mode::Int64;m=MixMat)
     i_mat = I(6)
     mode_ind = mode-1
-    @show mode_ind
+    #@show mode_ind
     if mode_ind != 0
         i_mat[mode_ind,mode_ind] = 0
     end
@@ -375,15 +376,22 @@ function mfmpc()
     model = PMPCSetup(T, M, SS, Gmat, unom_init, noise_mat_val)
     #return model
     P_next = P
-
+    @show x0
     for i in 1:num_steps
+        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        @show MixMat*u
+        # u = [1,1,1,1,1,1].*(2.4*9.81)/6
+        # @show u
+        @show MixMat*u
         #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
         x_true, z = nl_dynamics(x_true, u, SS, i) #Update to NL
+        @show round.(x_true,digits=3)
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
         bel, x_est = belief_updater(IMM_params, u, z, SS)
         IMM_params.bel = bel
+        # IMM_params.bel = belief(bel.means,bel.covariances,[0.75,0.25,0,0,0,0,0])
 
         push!(bel_vec, bel)
         push!(x_est_vec, x_est)
@@ -446,3 +454,20 @@ uplt5 = plot(tvec[2:end], map(u -> u[5], u_vec), label = :false)
 uplt6 = plot(tvec[2:end], map(u -> u[6], u_vec), label = :false)
 
 display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600, 700)))
+
+###BEN TESTING
+function ekf(x,P_hat0,z,u;H=H,dt=delT)
+    x_hat_p = last(simulate_nonlinear(x,u,dt)) # Predicted state
+    P_hat = ct2dt(Alin(x),dt) * P_hat0 * transpose(ct2dt(Alin(x),dt)) + mpc.W # Predicted covariance
+    v_arr = z - H * x_hat_p # measurement residual, H is truly linear here
+    S = H * P_hat * transpose(H) + mpc.V # residual covariance
+    K = P_hat * transpose(H) * inv(S) # filter gain
+    x_hat_u = x_hat_p + K * v_arr # updated state
+    P_hat_u = P_hat - K * S * transpose(K)
+    # P_hat_u = (I-K*H)*P_hat
+    return x_hat_u,P_hat_u
+end
+
+o_mat = [H;H*A;H*A^2;H*A^3;H*A^4;H*A^5;H*A^6;H*A^7;H*A^8;H*A^9;H*A^10;H*A^11]
+[H2;H2*A;H2*A^2;H2*A^3;H2*A^4;H2*A^5;H2*A^6;H2*A^7;H2*A^8;H2*A^9;H2*A^10;H2*A^11]
+H2 = [H; zeros(3,3) I zeros(3,6)]
