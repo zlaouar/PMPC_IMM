@@ -13,7 +13,7 @@ import PMPC_IMM
 using PMPC_IMM.PMPC: umpc, IMM, ssModel, PMPCSetup, belief, genGmat!
 using PMPC_IMM.Hexacopter: LinearModel, simulate_nonlinear, MixMat
 
-const hex = PMPC_IMM.Hexacopterd
+const hex = PMPC_IMM.Hexacopter
 const mpc = PMPC_IMM.PMPC
 
 # LQR Params
@@ -399,7 +399,25 @@ function mfmpc()
         push!(z_vec, z)
         push!(u_vec, u)
         @show i
+        probs = map(x -> x.mode_probs, bel_vec)
+        prob1 = map(x -> x[1], probs)
+        prob2 = map(x -> x[2], probs)
+        prob3 = map(x -> x[3], probs)
+        prob4 = map(x -> x[4], probs)
+        prob5 = map(x -> x[5], probs)
+        prob6 = map(x -> x[6], probs)
+        prob7 = map(x -> x[7], probs)
+        plt = plot(1:length(prob1), prob1, label = "mode 1")
+        plot!(plt,1:length(prob1), prob2, label = "mode 2")
+        plot!(plt,1:length(prob1), prob3, label = "mode 3")
+        plot!(plt,1:length(prob1), prob4, label = "mode 4")
+        plot!(plt,1:length(prob1), prob5, label = "mode 5")
+        plot!(plt,1:length(prob1), prob6, label = "mode 6")
+        plot!(plt,1:length(prob1), prob7, label = "mode 7")
+        plot!(legend=false)
+        display(plt)
     end
+
     return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
 end
 
