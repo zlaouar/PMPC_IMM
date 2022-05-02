@@ -48,7 +48,7 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
 
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
                         0 1 2 0 0 0 0 0 0 0 0 0 ;
-                        0 0 -2 0 0 0 0 0 0 0 0 0]
+                        0 0 -10 0 0 0 0 0 0 0 0 0] #-2
 
     xrefval = waypoints[3,:]
     @show unom_init
@@ -172,12 +172,12 @@ end
 # MFMPC Controller
 function umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
     print("mpc")
-    @time fix.(model[:Gmat], genGmat!(Gmat, unom_init, bel, Gmode, T, M, nm))
+    fix.(model[:Gmat], genGmat!(Gmat, unom_init, bel, Gmode, T, M, nm)) #@time
     #display(unom_init)
     fix.(model[:unom], unom_init)
     #display(MOI.get(model, Gurobi.ModelAttribute("IsQP")))
-    @time set_value.(model[:x0], x_est)
-    @time optimize!(model)
+    set_value.(model[:x0], x_est) #@time
+    optimize!(model) #@time
     _, u_seq = value.(model[:x]), value.(model[:u])
     set_start_value.(model[:u], u_seq)
 
