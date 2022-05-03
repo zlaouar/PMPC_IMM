@@ -143,20 +143,20 @@ function Alin(x_i;g=9.81,Kt=0.0,Kd=0.0,m=2.4,Iyy=5.126E-3,Ixx=5.126E-3,Izz=1.3E-
     #x_dot eqns
     F[1,4] = (cos(ψ)*sin(θ)*cos(ϕ)+sin(ϕ)*sin(ψ))*v+(cos(ϕ)*sin(ψ)-sin(ϕ)*cos(ψ)*sin(θ))*w
     F[1,5] = -(sin(θ)*cos(ψ))*uu+(cos(ψ)*sin(ϕ)*cos(θ))*v+(cos(ϕ)*cos(ψ)*cos(θ))*w
-    F[1,6] = -(cos(θ)*sin(ψ))*uu-(cos(ϕ)*sin(ψ)+cos(ϕ)*cos(ψ))*v+(sin(ϕ)*cos(ψ)-cos(ϕ)*sin(ψ)*sin(θ))*w
+    F[1,6] = -(cos(θ)*sin(ψ))*uu-(sin(ϕ)*sin(ψ)*sin(θ)+cos(ϕ)*cos(ψ))*v+(sin(ϕ)*cos(ψ)-cos(ϕ)*sin(ψ)*sin(θ))*w
     F[1,7] = cos(θ)*cos(ψ)
     F[1,8] = cos(ψ)*sin(ϕ)*sin(θ)-cos(ϕ)*sin(ψ)
     F[1,9] = sin(ϕ)*sin(ψ)+cos(ϕ)*cos(ψ)*sin(θ)
     #y_dot eqns
-    F[2,4] = (-sin(ϕ)*cos(ψ)+cos(ϕ)*sin(θ)*sin(ψ))v+(-sin(ϕ)*sin(θ)*sin(ψ)-cos(ϕ)*cos(ψ))*w
-    F[2,5] = -(sin(θ)*cos(ψ))*uu+(cos(ψ)*sin(ϕ)*cos(θ))*v+(cos(ϕ)*cos(ψ)*cos(θ))*w
-    F[2,6] = -(cos(θ)*sin(ψ))*uu-(cos(ϕ)*sin(ψ)+cos(ϕ)*cos(ψ))*v+(sin(ϕ)*cos(ψ)-cos(ϕ)*sin(ψ)*sin(θ))*w
+    F[2,4] = (-sin(ϕ)*cos(ψ)+cos(ϕ)*sin(θ)*sin(ψ))*v+(-sin(ϕ)*sin(θ)*sin(ψ)-cos(ϕ)*cos(ψ))*w
+    F[2,5] = -(sin(θ)*cos(ψ))*uu+(sin(ψ)*sin(ϕ)*cos(θ))*v+(cos(ϕ)*sin(ψ)*cos(θ))*w
+    F[2,6] = (cos(θ)*cos(ψ))*uu-(cos(ϕ)*sin(ψ)+sin(ϕ)*cos(ψ)*sin(θ))*v+(cos(ϕ)*cos(ψ)*sin(θ)+sin(ϕ)*sin(ψ))*w
     F[2,7] = cos(θ)*sin(ψ)
     F[2,8] = cos(ϕ)*cos(ψ)+sin(ϕ)*sin(θ)*sin(ψ)
     F[2,9] = cos(ϕ)*sin(θ)*sin(ψ)-sin(ϕ)*cos(ψ)
     #z_dot eqns
-    F[3,4] = (cos(θ)*cos(ϕ))*v-(cos(θ*sin(ϕ)))*w
-    F[3,5] = -cos(θ)*uu-sin(θ)*sin(ϕ)*v-sin(θ)*cos(θ)*w
+    F[3,4] = (cos(θ)*cos(ϕ))*v-(cos(θ)*sin(ϕ))*w
+    F[3,5] = -cos(θ)*uu-sin(θ)*sin(ϕ)*v-sin(θ)*cos(ϕ)*w
     F[3,7] = -sin(θ)
     F[3,8] = cos(θ)*sin(ϕ)
     F[3,9] = cos(θ)*cos(ϕ)
@@ -172,7 +172,7 @@ function Alin(x_i;g=9.81,Kt=0.0,Kd=0.0,m=2.4,Iyy=5.126E-3,Ixx=5.126E-3,Izz=1.3E-
     F[5,12] = -sin(ϕ)
     #psi_dot eqns
     F[6,4] = cos(ϕ)*sec(θ)*q-sin(ϕ)*sec(θ)*r
-    F[6,5] = sin(ϕ)*tan(θ)*sec(θ)*q+cos(θ)*tan(θ)*sec(θ)*r
+    F[6,5] = sin(ϕ)*tan(θ)*sec(θ)*q+cos(ϕ)*tan(θ)*sec(θ)*r
     F[6,11] = sin(ϕ)*sec(θ)
     F[6,12] = cos(ϕ)*sec(θ)
     ##V Partials
