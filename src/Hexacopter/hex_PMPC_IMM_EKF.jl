@@ -69,7 +69,7 @@ function nl_dynamics(x, u, SS, i)
     # else
         # x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))
     # end
-    return x_true, H*x_true
+    return wrapitup(x_true), H*wrapitup(x_true)
 end
 
 function belief_updater(IMM_params::IMM, u, z, SS)
@@ -100,6 +100,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # println(last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)))
         # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
         x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
+        x_hat_p[:,j] = wrapitup(x_hat_p[:,j])
         P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
         # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * wrapitup(x_hat_p[:,j]) # measurement residual, H is truly linear here
@@ -206,7 +207,7 @@ function Alin(x_i;g=9.81,Kt=0.0,Kd=0.0,m=2.4,Iyy=5.126E-3,Ixx=5.126E-3,Izz=1.3E-
     F[8,12] = -uu
     #w_dot eqns
     F[9,4] = -g*sin(ϕ)*cos(θ)
-    F[9,5] = -g*cos(θ)*sin(θ)
+    F[9,5] = -g*cos(ϕ)*sin(θ)
     F[9,7] = q-(Kd/m)*w*dVduu
     F[9,8] = -p-(Kd/m)*w*dVdv
     F[9,9] = -(Kd/m)*V-(Kd/m)*w*dVdw
@@ -373,7 +374,6 @@ function mfmpc()
     SS = ssModel(F, G, Gfail, Gmode, H, D, delT)
     unom_init = zeros(na,T,M)
 
-
     Gmat = genGmat!(Ginit, unom_init, bel, Gmode, T, M, na)
     noise_mat_val = zeros(ns,T,M)
 
@@ -398,18 +398,23 @@ function mfmpc()
         println("================")
         nlf_est = ct2dt(Alin(x_true),SS.dt)*x_true+SS.G*u
         x_true, z = nl_dynamics(x_true, u, SS, i) #Update to NL
-        x_true = wrapitup(x_true)
-        # @show z
-        # @show round.(x_true,digits=3)
-        display([x_true nlf_est])
-        println("================")
+
+        @show z
+        @show round.(x_true,digits=3)
+        # display([x_true nlf_est])
+        @show x_ekf
         x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H;dt=SS.dt)
-        # @show round.(x_ekf,digits=3)
+        x_ekf = wrapitup(x_ekf)
+
+        # @show round.(wrapitup(x_ekf),digits=3)
+        @show round.(x_true-x_ekf,digits=3)
+        println("================")
         # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
         bel, x_est = belief_updater(IMM_params, u, z, SS)
         x_ekf = x_est
-        @show round.(x_est,digits=3)
+        # @show round.(x_est,digits=3)
+
         # println("================")
         # @show x_true-x_est
         # println("================")
@@ -503,8 +508,10 @@ display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600
 ###BEN TESTING
 function ekf(x,P_hat0,z,u,H;dt=delT)
     x_hat_p = last(simulate_nonlinear(x,MixMat*u,dt)) # Predicted state
+    @show x_hat_p
     P_hat = ct2dt(Alin(x),dt) * P_hat0 * transpose(ct2dt(Alin(x),dt)) + mpc.W # Predicted covariance
     v_arr = z - H * x_hat_p # measurement residual, H is truly linear here
+    @show v_arr
     S = H * P_hat * transpose(H) + mpc.V # residual covariance
     K = P_hat * transpose(H) * inv(S) # filter gain
     x_hat_u = x_hat_p + K * v_arr # updated state
@@ -537,3 +544,16 @@ end
 o_mat = [H;H*A;H*A^2;H*A^3;H*A^4;H*A^5;H*A^6;H*A^7;H*A^8;H*A^9;H*A^10;H*A^11]
 [H2;H2*A;H2*A^2;H2*A^3;H2*A^4;H2*A^5;H2*A^6;H2*A^7;H2*A^8;H2*A^9;H2*A^10;H2*A^11]
 H2 = [H; zeros(3,3) I zeros(3,6)]
+
+function test_dyn(x)
+    matrix_res = x
+    lin_res = x
+    nl_res = x
+    for i in 1:2
+        matrix_res = ct2dt(Alin(nl_res),0.1)*nl_res
+        F = [0.9999999999999996 0.0 0.0 0.0 -0.049049999999999976 0.0 0.09999999999999995 0.0 0.0 0.0 -0.0016349999999999993 0.0; 0.0 0.9999999999999996 0.0 0.04904999999999997 0.0 0.0 0.0 0.09999999999999995 0.0 0.001634999999999999 0.0 0.0; 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995 0.0 0.0 0.0; 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995 0.0 0.0; 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995 0.0; 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995; 0.0 0.0 0.0 0.0 -0.9809999999999995 0.0 0.9999999999999996 0.0 0.0 0.0 -0.049049999999999976 0.0; 0.0 0.0 0.0 0.9809999999999995 0.0 0.0 0.0 0.9999999999999996 0.0 0.049049999999999976 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996]
+        lin_res = F*lin_res
+        nl_res = last(simulate_nonlinear(nl_res, [0,0,0,0], 0.1))
+    end
+    return [nl_res matrix_res lin_res]
+end
