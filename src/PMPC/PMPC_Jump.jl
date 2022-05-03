@@ -17,8 +17,9 @@ const na = 6 # number of actuators
 const nm = 3 # number of measurements
 
 #const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const W = Diagonal(0.001*ones(ns)) + zeros(ns,ns)
-const V = Diagonal(0.01*ones(nm)) + zeros(nm,nm)
+const W = Diagonal(0.001*ones(ns)) |> Matrix
+const V = Diagonal([0.01, 0.01, 0.01, 0.01, 0.01, 0.01]) |> Matrix
+
 const Wd = MvNormal(W)
 const Vd = MvNormal(V)
 
@@ -35,7 +36,7 @@ const unom_vec = [[m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6],
 function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
     F, G, H = SS.F, SS.G, SS.H
     # Define Q,R Matrices for PMPC optimization
-    Q = 1000000*(H'*H)
+    Q = 100000000*(H'*H)
     #Q = Diagonal([5,5,5,10,10,10,1,1,1,10,10,1]) + zeros(nn,nn)
     #Q[3,3] = 10000000
 
@@ -48,7 +49,7 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
 
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
                         0 1 2 0 0 0 0 0 0 0 0 0 ;
-                        0 0 -10 0 0 0 0 0 0 0 0 0] #-2
+                        0 3 -2 0 0 0 0 0 0 0 0 0] #-2
 
     xrefval = waypoints[3,:]
     #@show unom_init

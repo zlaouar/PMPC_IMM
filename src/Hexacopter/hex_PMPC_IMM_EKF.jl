@@ -99,15 +99,16 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # println("Estimates =======")
         # println(last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)))
         # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
-        x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
-        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
-        # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
+        x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j] # Predicted state
+        #x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
+        #P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
+        P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
         push!(x_hat_u, x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]) # updated state
         P_hat[j] = P_hat[j] - K[:,:,j] * S[:,:,j] * transpose(K[:,:,j]) # updated covariance
-        @show round.(x_hat_p[:,j] + K[:,:,j] * v_arr[:,j],digits=3)
+        #@show round.(x_hat_p[:,j] + K[:,:,j] * v_arr[:,j],digits=3)
         ####
         # Mode Probability update and FDD logic
         MvL = MvNormal(Symmetric(S[:,:,j]))
@@ -116,6 +117,8 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     for j in 1:num_modes
         push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
+    display([copyto!(zeros(12), z) x_hat_p])
+    @show L
     @show μ
     # Combination of Estimates
     x = sum(x_hat_u[j] * μ[j] for j in 1:num_modes) # overall estimate
@@ -276,7 +279,7 @@ function mfmpc()
     Gfail[:,1] = zeros(ns)
 
     x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+    P = Diagonal(0.1*ones(ns)) + zeros(ns,ns)
     #means = [x0,x0]
     #covariances = [P,P]
     means = [x0,x0,x0,x0,x0,x0,x0]
@@ -323,13 +326,16 @@ function mfmpc()
     P_next = P
     @show x0
     for i in 1:num_steps
-        #u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        u = [1, 1, 1, 1, 1, 1]
+        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        #@show MixMat*u
+        # u = [1,1,1,1,1,1].*(2.4*9.81)/6
+        # @show u
+        #@show MixMat*u
+        #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
-        x_true, z = nl_dynamics(x_true, u, SS, i) #Update to NL
-        x_true_lin, z_lin = dynamics(x_true, u, SS, i) # Lin dynamics
-        display([x_true x_true_lin])
-        #display(x_true_lin)
+        x_true, z = dynamics(x_true, u, SS, i) #Update to NL
+        #@show round.(x_true,digits=3)
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
         bel, x_est = belief_updater(IMM_params, u, z, SS)
         IMM_params.bel = bel
@@ -410,6 +416,6 @@ function ekf(x,P_hat0,z,u;H=H,dt=delT)
     return x_hat_u,P_hat_u
 end
 
-o_mat = [H;H*A;H*A^2;H*A^3;H*A^4;H*A^5;H*A^6;H*A^7;H*A^8;H*A^9;H*A^10;H*A^11]
-[H2;H2*A;H2*A^2;H2*A^3;H2*A^4;H2*A^5;H2*A^6;H2*A^7;H2*A^8;H2*A^9;H2*A^10;H2*A^11]
-H2 = [H; zeros(3,3) I zeros(3,6)]
+#o_mat = [H;H*A;H*A^2;H*A^3;H*A^4;H*A^5;H*A^6;H*A^7;H*A^8;H*A^9;H*A^10;H*A^11]
+#[H2;H2*A;H2*A^2;H2*A^3;H2*A^4;H2*A^5;H2*A^6;H2*A^7;H2*A^8;H2*A^9;H2*A^10;H2*A^11]
+#H2 = [H; zeros(3,3) I zeros(3,6)]
