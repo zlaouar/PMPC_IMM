@@ -17,8 +17,8 @@ const na = 6 # number of actuators
 const nm = 6 # number of measurements
 
 #const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const W = Diagonal(1*ones(ns)) + zeros(ns,ns)
-const V = Diagonal(1*ones(nm)) + zeros(nm,nm)
+const W = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+const V = Diagonal(0.01*ones(nm)) + zeros(nm,nm)
 const Wd = MvNormal(W)
 const Vd = MvNormal(V)
 
@@ -74,8 +74,8 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
     x0 = @variable(model,x0[i=1:ns] == xinit[i], Param())
 
     for m = 1:M
-        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, na * (j-2) + 1:na * (j-1), m] * u[:,j-1]
-                                                - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom[:,j,m] )#+ noise_mat[:,j,m])
+        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + G * u[:,j-1]
+                                                - G * unom_vec[1] )#+ noise_mat[:,j,m])
         @constraint(model, x[:,1,m] .== x0)
     end
     @show size(Gmat)

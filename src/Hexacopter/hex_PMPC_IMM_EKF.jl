@@ -104,7 +104,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         x_hat_p[:,j] = wrapitup(x_hat_p[:,j])
         P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
         # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
-        v_arr[:,j] = z - H * wrapitup(x_hat_p[:,j]) # measurement residual, H is truly linear here
+        v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
         x_predf =  x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]
@@ -118,13 +118,16 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         MvL = MvNormal(Symmetric(S[:,:,j]))
         push!(L, pdf(MvL, v_arr[:,j]))
     end
+    display([copyto!(zeros(12),z) x_hat_p])
     # @show MvNormal(Symmetric(S[:,:,1]))
     # @show v_arr[:,1]
     # @show L
-    # @show μ_pred
+    #@warn μ_pred
     for j in 1:num_modes
         push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
+    @info L
+    @info μ
     # @show μ
     # Combination of Estimates
     x = wrapitup(sum(x_hat_u[j] * μ[j] for j in 1:num_modes)) # overall estimate
@@ -336,8 +339,8 @@ function mfmpc()
             x_kf = []
             sigma_bounds = []
     for i in 1:num_steps
-        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        # u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # @show MixMat*u
         #Climb and Stop Control
         # if i < 20
@@ -383,7 +386,7 @@ function mfmpc()
         println("================")
         # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
-        # bel, x_est = belief_updater(IMM_params, u, z, SS)
+        bel, x_est = belief_updater(IMM_params, u, z, SS)
         # x_ekf = x_est
         # @show round.(x_est,digits=3)
 
@@ -394,7 +397,7 @@ function mfmpc()
         #     throw("Est and State disagree!")
         # end
         IMM_params.bel = bel
-        bel = belief(bel.means,bel.covariances,[0.99,0.01,0,0,0,0,0])
+        # bel = belief(bel.means,bel.covariances,[0.99,0.01,0,0,0,0,0])
         # IMM_params.bel = belief(bel.means,bel.covariances,[0.75,0.25,0,0,0,0,0])
 
         push!(bel_vec, bel)
