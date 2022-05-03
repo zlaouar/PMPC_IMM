@@ -2,7 +2,8 @@ using JuMP
 using Ipopt
 using LinearAlgebra
 using ParameterJuMP
-using Plots
+# using Plots
+using PlotlyJS
 using Distributions
 # using ElectronDisplay: electrondisplay
 using LaTeXStrings
@@ -111,20 +112,20 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         push!(x_hat_u,x_predf) # updated state
         P_hat[j] = P_hat[j] - K[:,:,j] * S[:,:,j] * transpose(K[:,:,j]) # updated covariance
 
-        @show round.(x_predf,digits=3)
+        # @show round.(x_predf,digits=3)
         ####
         # Mode Probability update and FDD logic
         MvL = MvNormal(Symmetric(S[:,:,j]))
         push!(L, pdf(MvL, v_arr[:,j]))
     end
-    @show MvNormal(Symmetric(S[:,:,1]))
-    @show v_arr[:,1]
-    @show L
-    @show μ_pred
+    # @show MvNormal(Symmetric(S[:,:,1]))
+    # @show v_arr[:,1]
+    # @show L
+    # @show μ_pred
     for j in 1:num_modes
         push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
-    @show μ
+    # @show μ
     # Combination of Estimates
     x = wrapitup(sum(x_hat_u[j] * μ[j] for j in 1:num_modes)) # overall estimate
     P = sum((P_hat[j] + (x - x_hat_u[j]) * transpose(x - x_hat_u[j])) * μ[j] for j in 1:num_modes) # overall covariance
@@ -242,62 +243,6 @@ function ct2dt(mat,dt)
 end
 ###############################
 
-
-#=
-function genGmat!(G, b, Gmode, T, M, nm)
-    # Sample fault distribution
-    #@show b.mode_probs
-    dist = Categorical(b.mode_probs)
-    sampled_inds = rand(dist, M)
-    #@show sampled_inds
-    gvec = zeros(T)
-
-    failed_rotor = 0
-    for j = 1:M
-        if sampled_inds[j] == 1 # nominal particle
-            for i in 1:T
-                rand_fail = rand()
-                if rand_fail < 0.03
-                    failed_rotor = 1
-                else
-                    G[:, nm*(i-1)+1:nm*i, j] = Gmode[1]
-                end
-                #=elseif rand_fail > 0.03 && rand_fail < 0.06
-                    failed_rotor = 2
-                elseif rand_fail > 0.06 && rand_fail < 0.09
-                    failed_rotor = 3
-                elseif rand_fail > 0.09 && rand_fail < 0.12
-                    failed_rotor = 4
-                elseif rand_fail > 0.12 && rand_fail < 0.15
-                    failed_rotor = 5
-                elseif rand_fail > 0.15 && rand_fail < 0.18
-                    failed_rotor = 6
-
-                else
-                    G[:, nm*(i-1)+1:nm*i, j] = Gmode[1]
-                end=#
-
-                if failed_rotor != 0
-                    G[:, nm*(i-1)+1:nm*i, j] = Gmode[failed_rotor + 1]
-                    gvec[i] = 1
-                    for k in i+1:T
-                        G[:, nm*(k-1)+1:nm*k, j] = Gmode[failed_rotor + 1]
-                        gvec[k] = 1
-                    end
-                    break
-                end
-                failed_rotor = 0
-
-            end
-        else # failure particle
-            G[:, :, j] = repeat(Gmode[sampled_inds[j]], 1, T)
-        end
-    end
-
-
-    return G
-end
-=#
 function mfmpc()
     """
     Simulate PMPC control of Hexacopter with 2 modes:
@@ -326,7 +271,7 @@ function mfmpc()
 
     ns = 12 # number of states
     na = 6 # number of actuators
-    nm = 3 # number of measurements
+    nm = 6 # number of measurements
 
     lin_model = LinearModel()
     A, B, C, D = lin_model.A, lin_model.B, lin_model.C, lin_model.D
@@ -339,7 +284,8 @@ function mfmpc()
     Gfail[:,1] = zeros(ns)
 
     x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+    # P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+    P = Diagonal(50.0*ones(ns)) + zeros(ns,ns)
     #means = [x0,x0]
     #covariances = [P,P]
     means = [x0,x0,x0,x0,x0,x0,x0]
@@ -386,33 +332,59 @@ function mfmpc()
     p_ekf = P
     x_ekf = x0
     @show x0
+            x = []
+            x_kf = []
+            sigma_bounds = []
     for i in 1:num_steps
-        u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        # u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # @show MixMat*u
-        #u = [1,1,1,1,1,1].*(2.2*9.81)/6
+        #Climb and Stop Control
+        # if i < 20
+        #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
+        # # elseif i<21
+        # #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
+        # # elseif i<25
+        # #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
+        # elseif i<25
+        #     u = [1,1,1,1,1,1.0].*(0.1*9.81)/6
+        # else
+        #     u = [1,1,1,1,1,1.0].*(2.4*9.81)/6
+        # end
+
+        # if i <= 6
+        #     u = [1,1,1,1,1,1.001].*(3.0*9.81)/6
+        # # elseif i == 6
+        # #     u =  [1,1,1,1,1,1.00].*(2.4*9.81)/6
+        # elseif i <= 11
+        #     u =  [1,1,1,1,1,0.999].*(3.0*9.81)/6
+        # else
+        #     u =  [1,1,1,1,1,1.0].*(2.4*9.81)/6
+        # end
         # @show u
+        @show u
         @show MixMat*u
         #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
         println("================")
-        nlf_est = ct2dt(Alin(x_true),SS.dt)*x_true+SS.G*u
+        # nlf_est = ct2dt(Alin(x_true),SS.dt)*x_true+SS.G*u
         x_true, z = nl_dynamics(x_true, u, SS, i) #Update to NL
 
         @show z
         @show round.(x_true,digits=3)
         # display([x_true nlf_est])
-        @show x_ekf
+
         x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H;dt=SS.dt)
         x_ekf = wrapitup(x_ekf)
+        @show round.(x_ekf,digits=3)
 
         # @show round.(wrapitup(x_ekf),digits=3)
-        @show round.(x_true-x_ekf,digits=3)
+        @info round.(x_true-x_ekf,digits=3)
         println("================")
         # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
-        bel, x_est = belief_updater(IMM_params, u, z, SS)
-        x_ekf = x_est
+        # bel, x_est = belief_updater(IMM_params, u, z, SS)
+        # x_ekf = x_est
         # @show round.(x_est,digits=3)
 
         # println("================")
@@ -432,6 +404,10 @@ function mfmpc()
         push!(u_vec, u)
         @show i
         println()
+
+        push!(x,x_true[9])
+        push!(x_kf,x_true[9]-x_ekf[9])
+        push!(sigma_bounds,2*sqrt(p_ekf[9,9]))
         # probs = map(x -> x.mode_probs, bel_vec)
         # prob1 = map(x -> x[1], probs)
         # prob2 = map(x -> x[2], probs)
@@ -449,8 +425,19 @@ function mfmpc()
         # plot!(plt,1:length(prob1), prob7, label = "mode 7")
         # plot!(legend=false)
         # display(plt)
+        # display(plot(1:length(x),x))
     end
-
+    p2 = plot(1:length(x_true_vec),[x[1] for x in x_true_vec])
+    p3 = plot(1:length(x_true_vec),[x[2] for x in x_true_vec])
+    p4 = plot(1:length(x_true_vec),[x[3] for x in x_true_vec])
+    p5 = plot(1:length(x_true_vec),[x[4] for x in x_true_vec])
+    p6 = plot(1:length(x_true_vec),[x[5] for x in x_true_vec])
+    p7 = plot(1:length(x_true_vec),[x[6] for x in x_true_vec])
+    display([p2 p5; p3 p6; p4 p7])
+    p1 = plot(1:length(x_kf),x_kf)
+    add_trace!(p1,scatter(;x=1:length(x),y=-1*sigma_bounds))
+    add_trace!(p1,scatter(;x=1:length(x),y=sigma_bounds))
+    display(p1)
     return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
 end
 
@@ -508,16 +495,17 @@ display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600
 
 ###BEN TESTING
 function ekf(x,P_hat0,z,u,H;dt=delT)
-    x_hat_p = last(simulate_nonlinear(x,MixMat*u,dt)) # Predicted state
+    x_hat_p = wrapitup(last(simulate_nonlinear(x,MixMat*u,dt))) # Predicted state
     @show x_hat_p
-    P_hat = ct2dt(Alin(x),dt) * P_hat0 * transpose(ct2dt(Alin(x),dt)) + mpc.W # Predicted covariance
+    ekf_F = ct2dt(Alin(x),dt)
+    P_hat = ekf_F * P_hat0 * transpose(ekf_F) + mpc.W # Predicted covariance
     v_arr = z - H * x_hat_p # measurement residual, H is truly linear here
     @show v_arr
     S = H * P_hat * transpose(H) + mpc.V # residual covariance
     K = P_hat * transpose(H) * inv(S) # filter gain
-    x_hat_u = x_hat_p + K * v_arr # updated state
-    P_hat_u = P_hat - K * S * transpose(K)
-    # P_hat_u = (I-K*H)*P_hat
+    x_hat_u = wrapitup(x_hat_p + K * v_arr) # updated state
+    # P_hat_u = P_hat - K * S * transpose(K)
+    P_hat_u = (I-K*H)*P_hat
     return x_hat_u,P_hat_u
 end
 
@@ -550,11 +538,11 @@ function test_dyn(x)
     matrix_res = x
     lin_res = x
     nl_res = x
-    for i in 1:15
-        matrix_res = exp(Alin(nl_res)*0.1)*nl_res#ct2dt(Alin(nl_res),0.1)*nl_res
+    for i in 1:1
+        matrix_res = ct2dt(Alin(nl_res),0.1)*nl_res+Bv*[0,0,0,0]#ct2dt(Alin(nl_res),0.1)*nl_res
         F = [0.9999999999999996 0.0 0.0 0.0 -0.049049999999999976 0.0 0.09999999999999995 0.0 0.0 0.0 -0.0016349999999999993 0.0; 0.0 0.9999999999999996 0.0 0.04904999999999997 0.0 0.0 0.0 0.09999999999999995 0.0 0.001634999999999999 0.0 0.0; 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995 0.0 0.0 0.0; 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995 0.0 0.0; 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995 0.0; 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0 0.0 0.0 0.09999999999999995; 0.0 0.0 0.0 0.0 -0.9809999999999995 0.0 0.9999999999999996 0.0 0.0 0.0 -0.049049999999999976 0.0; 0.0 0.0 0.0 0.9809999999999995 0.0 0.0 0.0 0.9999999999999996 0.0 0.049049999999999976 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996 0.0; 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.9999999999999996]
-        lin_res = F*lin_res
-        nl_res = last(simulate_nonlinear(nl_res, [0,0,0,0], 0.1))
+        lin_res = F*lin_res+Bv*[0,0,0,0]
+        nl_res = last(simulate_nonlinear(nl_res, [9.81*2.4,0,0,0], 0.1))
     end
     return [nl_res matrix_res lin_res]
 end

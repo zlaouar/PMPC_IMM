@@ -17,8 +17,8 @@ const na = 6 # number of actuators
 const nm = 6 # number of measurements
 
 #const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const W = Diagonal(0.001*ones(ns)) + zeros(ns,ns)
-const V = Diagonal(0.01*ones(nm)) + zeros(nm,nm)
+const W = Diagonal(1*ones(ns)) + zeros(ns,ns)
+const V = Diagonal(1*ones(nm)) + zeros(nm,nm)
 const Wd = MvNormal(W)
 const Vd = MvNormal(V)
 
