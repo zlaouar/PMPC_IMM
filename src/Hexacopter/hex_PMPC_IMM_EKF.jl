@@ -52,11 +52,11 @@ end
 function dynamics(x, u, SS, i)
     F, G, Gmode, H = SS.F, SS.G, SS.Gmode, SS.H
     R = Diagonal([0.2, 1, 1, 1, 1, 1]) + zeros(6, 6)
-    #if i < 40
+    if i < 40
         x_true = F * x + G * u - G * hex.unom
-    #else
+    else
         x_true = F * x + Gmode[2] * u - Gmode[2] * mpc.unom_vec[2]
-    #end
+    end
     z = H * x_true# + rand(mpc.Vd)
 
     return x_true, z
@@ -79,11 +79,11 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     P_prev = bel.covariances
     μ_prev = bel.mode_probs
 
-    S = Array{Float64, 3}(undef, 3, 3, num_modes)
-    K = Array{Float64, 3}(undef, 12, 3, num_modes)
+    S = Array{Float64, 3}(undef, mpc.nm, mpc.nm, num_modes)
+    K = Array{Float64, 3}(undef, 12, mpc.nm, num_modes)
     x_hat_p = Array{Float64, 2}(undef, 12, num_modes)
     x_hat_u = Vector{Float64}[]
-    v_arr = Array{Float64, 2}(undef, 3, num_modes)
+    v_arr = Array{Float64, 2}(undef, mpc.nm, num_modes)
     L = Float64[]
     μ = Float64[]
 
@@ -266,10 +266,11 @@ function mfmpc()
 
     ns = 12 # number of states
     na = 6 # number of actuators
-    nm = 3 # number of measurements
+    nm = 6 # number of measurements
 
     lin_model = LinearModel()
     A, B, C, D = lin_model.A, lin_model.B, lin_model.C, lin_model.D
+    display(C)
     sys = ss(A, B, C, D)
     sysd = c2d(sys, delT)
     F, G, H, D = sysd.A, sysd.B, sysd.C, sysd.D
@@ -311,6 +312,7 @@ function mfmpc()
         push!(Gmode, SMatrix{12, 6}(G * zero_mat))
         zero_mat[i,i] = 1
     end
+    display(F)
     SS = ssModel(F, G, Gfail, Gmode, H, D, delT)
     unom_init = zeros(na,T,M)
 
@@ -337,6 +339,7 @@ function mfmpc()
         x_true, z = dynamics(x_true, u, SS, i) #Update to NL
         #@show round.(x_true,digits=3)
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
+        #@show C
         bel, x_est = belief_updater(IMM_params, u, z, SS)
         IMM_params.bel = bel
         # IMM_params.bel = belief(bel.means,bel.covariances,[0.75,0.25,0,0,0,0,0])
