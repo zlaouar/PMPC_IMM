@@ -65,7 +65,7 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    if i < 40
+    if i < 1
         x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))
     else
         x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))
@@ -102,10 +102,10 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
         x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
         x_hat_p[:,j] = wrapitup(x_hat_p[:,j])
-        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + W # Predicted covariance
+        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
         # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
-        S[:,:,j] = H * P_hat[j] * transpose(H) + V # residual covariance
+        S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
         x_predf =  x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]
         x_predf = wrapitup(x_predf)
@@ -263,6 +263,44 @@ end
 function ct2dt(mat,dt)
     return I+dt*mat
 end
+
+###BEN TESTING
+function ekf(x,P_hat0,z,u,H;dt=delT)
+    x_hat_p = wrapitup(last(simulate_nonlinear(x,MixMat*u,dt))) # Predicted state
+    @show x_hat_p
+    ekf_F = ct2dt(Alin(x),dt)
+    P_hat = ekf_F * P_hat0 * transpose(ekf_F) + mpc.W # Predicted covariance
+    v_arr = z - H * x_hat_p # measurement residual, H is truly linear here
+    @show v_arr
+    S = H * P_hat * transpose(H) + mpc.V # residual covariance
+    K = P_hat * transpose(H) * inv(S) # filter gain
+    x_hat_u = wrapitup(x_hat_p + K * v_arr) # updated state
+    # P_hat_u = P_hat - K * S * transpose(K)
+    P_hat_u = (I-K*H)*P_hat
+    return x_hat_u,P_hat_u
+end
+
+function wrapitup(x)
+    x_new = deepcopy(x)
+    for (i,r) in enumerate(x[4:6])
+        #@show i,r
+        if r > pi && r <= 2*pi
+            x_new[i+3] = -2*pi+r
+        elseif r < -pi && r >= -2*pi
+            x_new[i+3] = 2*pi+r
+        elseif abs(r) > 2*pi
+             rint = r%(2*pi)
+             if rint > pi && rint <= 2*pi
+                 x_new[i+3] = -2*pi+rint
+             elseif rint < -pi && rint >= -2*pi
+                 x_new[i+3] = 2*pi+rint
+             else
+                 x_new[i+3] = rint
+             end
+        end
+    end
+    return x_new
+end
 ###############################
 
 function mfmpc()
@@ -348,7 +386,7 @@ function mfmpc()
     for i in 1:M
         noise_mat_val[:,:,i] = rand(mpc.prm,T)
     end
-    model = PMPCSetup(T, M, SS, Gmat, unom_init, noise_mat_val)
+    model = PMPCSetup(T, M, SS, Gfail, Gmat, unom_init, noise_mat_val)
     #return model
     P_next = P
     p_ekf = P
@@ -358,7 +396,7 @@ function mfmpc()
             x_kf = []
             sigma_bounds = []
     for i in 1:num_steps
-        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # @show MixMat*u
         #Climb and Stop Control
@@ -375,11 +413,24 @@ function mfmpc()
         # else
         #     u = [1,1,1,1,1,1.0].*(2.4*9.81)/6
         # end
-        if maximum(bel.)
-            u = [1,1,1,1,1,1.0].*(2.4*9.81)/6
-        else
-            u = [0,1,1,0,1,1].*(2.4*9.81)/4
-        end
+        # @show maximum(bel.mode_probs)
+        # sp = 10
+        # K = 2
+        # T = 2.4*9.81 #+K*(sp-x_est[3])
+        # if argmax(bel.mode_probs) == 1
+        #     u = [1,1,1,1,1,1.0].*(T)/6
+        # elseif argmax(bel.mode_probs) == 2 || maximum(bel.mode_probs) == 5
+        #     u = [0,1,1,0,1,1].*(T)/4
+        # elseif argmax(bel.mode_probs) == 4 || maximum(bel.mode_probs) == 7
+        #     u = [1,1,0,1,1,0].*(T)/4
+        # elseif argmax(bel.mode_probs) == 3 || maximum(bel.mode_probs) == 6
+        #     u = [1,0,1,1,0,1].*(T)/4
+        # end
+        # if i< 40
+        #     u = [1,1,1,1,1,1.0].*(T)/6
+        # else
+        #     u = [0,1,1,0,1,1].*(T)/4
+        # end
         # if i <= 6
         #     u = [1,1,1,1,1,1.001].*(3.0*9.81)/6
         # # elseif i == 6
@@ -520,43 +571,7 @@ uplt6 = plot(tvec[2:end], map(u -> u[6], u_vec), label = :false)
 
 display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600, 700)))
 
-###BEN TESTING
-function ekf(x,P_hat0,z,u,H;dt=delT)
-    x_hat_p = wrapitup(last(simulate_nonlinear(x,MixMat*u,dt))) # Predicted state
-    @show x_hat_p
-    ekf_F = ct2dt(Alin(x),dt)
-    P_hat = ekf_F * P_hat0 * transpose(ekf_F) + mpc.W # Predicted covariance
-    v_arr = z - H * x_hat_p # measurement residual, H is truly linear here
-    @show v_arr
-    S = H * P_hat * transpose(H) + mpc.V # residual covariance
-    K = P_hat * transpose(H) * inv(S) # filter gain
-    x_hat_u = wrapitup(x_hat_p + K * v_arr) # updated state
-    # P_hat_u = P_hat - K * S * transpose(K)
-    P_hat_u = (I-K*H)*P_hat
-    return x_hat_u,P_hat_u
-end
 
-function wrapitup(x)
-    x_new = deepcopy(x)
-    for (i,r) in enumerate(x[4:6])
-        #@show i,r
-        if r > pi && r <= 2*pi
-            x_new[i+3] = -2*pi+r
-        elseif r < -pi && r >= -2*pi
-            x_new[i+3] = 2*pi+r
-        elseif abs(r) > 2*pi
-             rint = r%(2*pi)
-             if rint > pi && rint <= 2*pi
-                 x_new[i+3] = -2*pi+rint
-             elseif rint < -pi && rint >= -2*pi
-                 x_new[i+3] = 2*pi+rint
-             else
-                 x_new[i+3] = rint
-             end
-        end
-    end
-    return x_new
-end
 o_mat = [H;H*A;H*A^2;H*A^3;H*A^4;H*A^5;H*A^6;H*A^7;H*A^8;H*A^9;H*A^10;H*A^11]
 [H2;H2*A;H2*A^2;H2*A^3;H2*A^4;H2*A^5;H2*A^6;H2*A^7;H2*A^8;H2*A^9;H2*A^10;H2*A^11]
 H2 = [H; zeros(3,3) I zeros(3,6)]
