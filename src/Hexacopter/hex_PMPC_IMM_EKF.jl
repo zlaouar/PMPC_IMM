@@ -65,7 +65,7 @@ end
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
     # if i < 40
-        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))
+        x_true = last(simulate_nonlinear(x, nl_mode(u,1), dt))
     # else
         # x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))
     # end
@@ -336,7 +336,11 @@ function mfmpc()
         #@show MixMat*u
         #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
+        @show u
+        @show x_pre = x_true
         x_true, z = dynamics(x_true, u, SS, i) #Update to NL
+        x_true_nl, z_nl = nl_dynamics(x_true, u, SS, i) #Update to NL
+        display([x_pre x_true x_true_nl])
         #@show round.(x_true,digits=3)
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
         #@show C

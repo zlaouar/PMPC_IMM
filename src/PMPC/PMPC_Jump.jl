@@ -36,11 +36,13 @@ const unom_vec = [[m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6],
 function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
     F, G, H = SS.F, SS.G, SS.H
     # Define Q,R Matrices for PMPC optimization
-    Q = 100000000*(H'*H)
+    Q = 1000000*(H'*H)
+    Q = Diagonal([1e6, 1e6, 1e8, 1e6, 1e6, 1e6, 0, 0, 0, 0, 0, 0]) |> Matrix
+    display(Q)
     #Q = Diagonal([5,5,5,10,10,10,1,1,1,10,10,1]) + zeros(nn,nn)
     #Q[3,3] = 10000000
 
-    R = (I + zeros(na,na))*0.0001
+    R = I(na)*0.0001 |> Matrix
 
     prm = MvNormal(W)
 
