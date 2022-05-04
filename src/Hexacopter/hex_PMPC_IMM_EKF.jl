@@ -65,11 +65,11 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    # if i < 40
+    if i < 40
         x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))
-    # else
-        # x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))
-    # end
+    else
+        x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))
+    end
     return wrapitup(x_true), H*wrapitup(x_true)
 end
 
@@ -92,7 +92,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     μ_ij = transpose(reshape([π[i,j]*μ_prev[i]/μ_pred[j] for i in 1:num_modes for j in 1:num_modes], num_modes, num_modes)) # Mixing probabilities
     #@show μ_ij, x_prev
     x_hat = hcat([sum(x_prev[i]*μ_ij[i,j] for i in 1:num_modes) for j in 1:num_modes]...)  # Mixing estimate
-    P_hat = [sum((P_prev[i] + (x_hat[:,j]-x_prev[i])*(x_hat[:,j]-x_prev[i])')*μ_ij[i,j] for i in 1:num_modes) for j in 1:num_modes] # Mixing covariance
+    P_hat = [sum((P_prev[i] + (x_prev[i]-x_hat[:,j])*(x_prev[i]-x_hat[:,j])')*μ_ij[i,j] for i in 1:num_modes) for j in 1:num_modes] # Mixing covariance
     #V = zeros(2,2)
     for j in 1:num_modes
         ####Filter Time
@@ -102,10 +102,10 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
         x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
         x_hat_p[:,j] = wrapitup(x_hat_p[:,j])
-        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
+        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + W # Predicted covariance
         # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
-        S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
+        S[:,:,j] = H * P_hat[j] * transpose(H) + V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
         x_predf =  x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]
         x_predf = wrapitup(x_predf)
@@ -116,9 +116,16 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         ####
         # Mode Probability update and FDD logic
         MvL = MvNormal(Symmetric(S[:,:,j]))
-        push!(L, pdf(MvL, v_arr[:,j]))
+        # MvL = MvNormal(round.(S[:,:,j],digits=5))
+        py = pdf(MvL, v_arr[:,j])
+        # if py < 0.0001
+        #     py = 0.0001
+        # end
+        push!(L,py)
     end
     display([copyto!(zeros(12),z) x_hat_p])
+    display(S[:,:,2])
+    display(P_hat[2])
     # @show MvNormal(Symmetric(S[:,:,1]))
     # @show v_arr[:,1]
     # @show L
@@ -131,10 +138,22 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     # @show μ
     # Combination of Estimates
     x = wrapitup(sum(x_hat_u[j] * μ[j] for j in 1:num_modes)) # overall estimate
-    P = sum((P_hat[j] + (x - x_hat_u[j]) * transpose(x - x_hat_u[j])) * μ[j] for j in 1:num_modes) # overall covariance
+    P = sum((P_hat[j] + (x_hat_u[j]-x) * transpose(x_hat_u[j]-x)) * μ[j] for j in 1:num_modes) # overall covariance
     #@show P_hat
     #pprintln(P_hat)
     #@show typeof(x_hat_u), typeof(P_hat), typeof(μ)
+    # one_list = findall(x->x==1.0,μ)
+    # if !isempty(one_list)
+    #     μ[one_list[1]] -= 0.01
+    #     μ[7] += 0.01
+    # end
+    # mp = minimum(μ)
+    # if abs(mp)<1e-12
+    #     μ = μ .+ 0.01
+    #     μ = μ/sum(μ)
+    #     @warn μ
+    # end
+
     return belief(x_hat_u, P_hat, μ), x
 end
 
@@ -288,7 +307,7 @@ function mfmpc()
 
     x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     # P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-    P = Diagonal(50.0*ones(ns)) + zeros(ns,ns)
+    P = Diagonal(1*ones(ns)) + zeros(ns,ns)
     #means = [x0,x0]
     #covariances = [P,P]
     means = [x0,x0,x0,x0,x0,x0,x0]
@@ -339,7 +358,7 @@ function mfmpc()
             x_kf = []
             sigma_bounds = []
     for i in 1:num_steps
-        u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # @show MixMat*u
         #Climb and Stop Control
@@ -351,10 +370,16 @@ function mfmpc()
         # #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
         # elseif i<25
         #     u = [1,1,1,1,1,1.0].*(0.1*9.81)/6
+        # elseif i>=40
+        #     u = [1,0,1,1,0,1].*(2.4*9.81)/4
         # else
         #     u = [1,1,1,1,1,1.0].*(2.4*9.81)/6
         # end
-
+        if maximum(bel.)
+            u = [1,1,1,1,1,1.0].*(2.4*9.81)/6
+        else
+            u = [0,1,1,0,1,1].*(2.4*9.81)/4
+        end
         # if i <= 6
         #     u = [1,1,1,1,1,1.001].*(3.0*9.81)/6
         # # elseif i == 6
@@ -411,24 +436,6 @@ function mfmpc()
         push!(x,x_true[9])
         push!(x_kf,x_true[9]-x_ekf[9])
         push!(sigma_bounds,2*sqrt(p_ekf[9,9]))
-        # probs = map(x -> x.mode_probs, bel_vec)
-        # prob1 = map(x -> x[1], probs)
-        # prob2 = map(x -> x[2], probs)
-        # prob3 = map(x -> x[3], probs)
-        # prob4 = map(x -> x[4], probs)
-        # prob5 = map(x -> x[5], probs)
-        # prob6 = map(x -> x[6], probs)
-        # prob7 = map(x -> x[7], probs)
-        # plt = plot(1:length(prob1), prob1, label = "mode 1")
-        # plot!(plt,1:length(prob1), prob2, label = "mode 2")
-        # plot!(plt,1:length(prob1), prob3, label = "mode 3")
-        # plot!(plt,1:length(prob1), prob4, label = "mode 4")
-        # plot!(plt,1:length(prob1), prob5, label = "mode 5")
-        # plot!(plt,1:length(prob1), prob6, label = "mode 6")
-        # plot!(plt,1:length(prob1), prob7, label = "mode 7")
-        # plot!(legend=false)
-        # display(plt)
-        # display(plot(1:length(x),x))
     end
     p2 = plot(1:length(x_true_vec),[x[1] for x in x_true_vec])
     p3 = plot(1:length(x_true_vec),[x[2] for x in x_true_vec])
@@ -441,6 +448,23 @@ function mfmpc()
     add_trace!(p1,scatter(;x=1:length(x),y=-1*sigma_bounds))
     add_trace!(p1,scatter(;x=1:length(x),y=sigma_bounds))
     display(p1)
+    probs = map(x -> x.mode_probs, bel_vec)
+    prob1 = map(x -> x[1], probs)
+    prob2 = map(x -> x[2], probs)
+    prob3 = map(x -> x[3], probs)
+    prob4 = map(x -> x[4], probs)
+    prob5 = map(x -> x[5], probs)
+    prob6 = map(x -> x[6], probs)
+    prob7 = map(x -> x[7], probs)
+    plt = plot(1:length(prob1), y=prob1, label = "mode 1")
+    add_trace!(plt,scatter(;x=1:length(prob1), y=prob2, label = "mode 2"))
+    add_trace!(plt,scatter(;x=1:length(prob1), y=prob3, label = "mode 3"))
+    add_trace!(plt,scatter(;x=1:length(prob1), y=prob4, label = "mode 4"))
+    add_trace!(plt,scatter(;x=1:length(prob1), y=prob5, label = "mode 5"))
+    add_trace!(plt,scatter(;x=1:length(prob1), y=prob6, label = "mode 6"))
+    add_trace!(plt,scatter(;x=1:length(prob1), y=prob7, label = "mode 7"))
+    display(plt)
+    # display(plot(1:length(x),x))
     return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
 end
 

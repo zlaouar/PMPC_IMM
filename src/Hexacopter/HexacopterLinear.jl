@@ -86,7 +86,7 @@ function simulate_nonlinear(x, u, t)
     p[4] = m
     p[5] = g
     p[6] = u
-    dt = 0.01
+    dt = 0.0001
     tspan = (0.0, t)
     xvec = Vector{Float64}[]
     # @show typeof(x)
