@@ -92,7 +92,7 @@ function simulate_nonlinear(x, u, t)
     # @show typeof(x)
     problem = ODEProblem(f!, [x...], tspan, p)
     # @show p
-    sol = solve(problem, adaptive = false, dt = 0.01)
+    sol = solve(problem, adaptive = true, dt = 0.0001)
 
     return sol
 end

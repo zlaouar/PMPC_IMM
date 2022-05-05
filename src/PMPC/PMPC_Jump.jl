@@ -17,7 +17,7 @@ const na = 6 # number of actuators
 const nm = 6 # number of measurements
 
 #const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const W = Diagonal(ones(12)*0.01) |> Matrix #Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+const W = Diagonal(ones(12)*0.001) |> Matrix #Diagonal(0.01*ones(ns)) + zeros(ns,ns)
 const V = Diagonal([0.001, 0.001, 0.001, 0.001, 0.001, 0.001]) |> Matrix#Diagonal(0.01*ones(nm)) + zeros(nm,nm)
 const Wd = MvNormal(W)
 const Vd = MvNormal(V)
@@ -36,7 +36,7 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
     F, G, H = SS.F, SS.G, SS.H
 
     # Define Q,R Matrices for PMPC optimization
-    Q = 100000000*(H'*H)
+    Q = 10000000*(H'*H)
     @show Q
     #Q = Diagonal([5,5,5,10,10,10,1,1,1,10,10,1]) + zeros(nn,nn)
     #Q[3,3] = 10000000
@@ -50,7 +50,7 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
 
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
                         0 1 2 0 0 0 0 0 0 0 0 0 ;
-                        0 0 -10 0 0 0 0 0 0 0 0 0] #-2
+                        0 1 -10 0 0 0 0 0 0 0 0 0] #-2
 
     xrefval = waypoints[3,:]
     @show unom_init
@@ -88,8 +88,9 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
     #for m = 2:M
     #    @constraint(model, u[:,:,m] .== u[:,:,1])
     #end
+    @constraint(model, u[:,:] .<= 15.5)
+    @constraint(model, u[:,:] .>= 0.1)
 
-    @constraint(model, [i=1:6], 15.5 .>= u[i,:,:] .>= 0.1)
 
     return model
 end
@@ -181,7 +182,7 @@ function umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init
     set_value.(model[:x0], x_est) #@time
     optimize!(model) #@time
     _, u_seq = value.(model[:x]), value.(model[:u])
-    set_start_value.(model[:u], u_seq)
+    #set_start_value.(model[:u], u_seq)
 
 
     # Update particle process noise

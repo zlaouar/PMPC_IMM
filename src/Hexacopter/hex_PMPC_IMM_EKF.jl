@@ -65,12 +65,12 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    if i < 1
-        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))
-    else
-        x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))
-    end
-    return wrapitup(x_true), H*wrapitup(x_true)
+    #if i < 20
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
+    #else
+    #    x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
+    #end
+    return wrapitup(x_true), H*wrapitup(x_true+[rand(mpc.Vd);zeros(6)])
 end
 
 function belief_updater(IMM_params::IMM, u, z, SS)
@@ -302,7 +302,7 @@ function wrapitup(x)
     return x_new
 end
 ###############################
-
+# u_hist = []
 function mfmpc()
     """
     Simulate PMPC control of Hexacopter with 2 modes:
@@ -326,8 +326,8 @@ function mfmpc()
     #num_modes = 2
     num_modes = 7
 
-    delT = 0.1 # Timestep
-    num_steps = 80
+    delT = 0.05 # Timestep
+    num_steps = 40
 
     ns = 12 # number of states
     na = 6 # number of actuators
@@ -345,7 +345,7 @@ function mfmpc()
 
     x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     # P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-    P = Diagonal(1*ones(ns)) + zeros(ns,ns)
+    P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
     #means = [x0,x0]
     #covariances = [P,P]
     means = [x0,x0,x0,x0,x0,x0,x0]
@@ -386,7 +386,7 @@ function mfmpc()
     for i in 1:M
         noise_mat_val[:,:,i] = rand(mpc.prm,T)
     end
-    model = PMPCSetup(T, M, SS, Gfail, Gmat, unom_init, noise_mat_val)
+    model = PMPCSetup(T, M, SS, G, Gmat, unom_init, noise_mat_val)
     #return model
     P_next = P
     p_ekf = P
@@ -397,7 +397,9 @@ function mfmpc()
             sigma_bounds = []
     for i in 1:num_steps
         u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        # u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        #u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        # push!(u_hist,u)
+        # u = u_hist[i]
         # @show MixMat*u
         #Climb and Stop Control
         # if i < 20
@@ -408,8 +410,8 @@ function mfmpc()
         # #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
         # elseif i<25
         #     u = [1,1,1,1,1,1.0].*(0.1*9.81)/6
-        # elseif i>=40
-        #     u = [1,0,1,1,0,1].*(2.4*9.81)/4
+        # # elseif i>=40
+        # #     u = [1,0,1,1,0,1].*(2.4*9.81)/4
         # else
         #     u = [1,1,1,1,1,1.0].*(2.4*9.81)/6
         # end
@@ -441,7 +443,7 @@ function mfmpc()
         #     u =  [1,1,1,1,1,1.0].*(2.4*9.81)/6
         # end
         # @show u
-        @show u
+        @warn u
         @show MixMat*u
         #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
@@ -484,9 +486,10 @@ function mfmpc()
         @show i
         println()
 
-        push!(x,x_true[9])
-        push!(x_kf,x_true[9]-x_ekf[9])
-        push!(sigma_bounds,2*sqrt(p_ekf[9,9]))
+        push!(x,x_true)
+        push!(x_kf,x_true-x_ekf)
+        # @show p_ekf
+        push!(sigma_bounds,sqrt.(diag(p_ekf)))
     end
     p2 = plot(1:length(x_true_vec),[x[1] for x in x_true_vec])
     p3 = plot(1:length(x_true_vec),[x[2] for x in x_true_vec])
@@ -495,10 +498,48 @@ function mfmpc()
     p6 = plot(1:length(x_true_vec),[x[5] for x in x_true_vec])
     p7 = plot(1:length(x_true_vec),[x[6] for x in x_true_vec])
     display([p2 p5; p3 p6; p4 p7])
-    p1 = plot(1:length(x_kf),x_kf)
-    add_trace!(p1,scatter(;x=1:length(x),y=-1*sigma_bounds))
-    add_trace!(p1,scatter(;x=1:length(x),y=sigma_bounds))
-    display(p1)
+
+    p1 = plot(1:length(x_kf),[x[1] for x in x_kf])
+    add_trace!(p1,scatter(;x=1:length(x_kf),y=-2*[x[1] for x in sigma_bounds]))
+    add_trace!(p1,scatter(;x=1:length(x_kf),y=2*[x[1] for x in sigma_bounds]))
+    p11 = plot(1:length(x_kf),[x[2] for x in x_kf])
+    add_trace!(p11,scatter(;x=1:length(x_kf),y=-2*[x[2] for x in sigma_bounds]))
+    add_trace!(p11,scatter(;x=1:length(x_kf),y=2*[x[2] for x in sigma_bounds]))
+    p12 = plot(1:length(x_kf),[x[3] for x in x_kf])
+    add_trace!(p12,scatter(;x=1:length(x_kf),y=-2*[x[3] for x in sigma_bounds]))
+    add_trace!(p12,scatter(;x=1:length(x_kf),y=2*[x[3] for x in sigma_bounds]))
+    p13 = plot(1:length(x_kf),[x[4] for x in x_kf])
+    add_trace!(p13,scatter(;x=1:length(x_kf),y=-2*[x[4] for x in sigma_bounds]))
+    add_trace!(p13,scatter(;x=1:length(x_kf),y=2*[x[4] for x in sigma_bounds]))
+    p14 = plot(1:length(x_kf),[x[5] for x in x_kf])
+    add_trace!(p14,scatter(;x=1:length(x_kf),y=-2*[x[5] for x in sigma_bounds]))
+    add_trace!(p14,scatter(;x=1:length(x_kf),y=2*[x[5] for x in sigma_bounds]))
+    p15 = plot(1:length(x_kf),[x[6] for x in x_kf])
+    add_trace!(p15,scatter(;x=1:length(x_kf),y=-2*[x[6] for x in sigma_bounds]))
+    add_trace!(p15,scatter(;x=1:length(x_kf),y=2*[x[6] for x in sigma_bounds]))
+    display([p1 p13; p11 p14; p12 p15])
+
+    p16 = plot(1:length(x_kf),[x[7] for x in x_kf])
+    add_trace!(p16,scatter(;x=1:length(x_kf),y=-2*[x[7] for x in sigma_bounds]))
+    add_trace!(p16,scatter(;x=1:length(x_kf),y=2*[x[7] for x in sigma_bounds]))
+    p17 = plot(1:length(x_kf),[x[8] for x in x_kf])
+    add_trace!(p17,scatter(;x=1:length(x_kf),y=-2*[x[8] for x in sigma_bounds]))
+    add_trace!(p17,scatter(;x=1:length(x_kf),y=2*[x[8] for x in sigma_bounds]))
+    p18 = plot(1:length(x_kf),[x[9] for x in x_kf])
+    add_trace!(p18,scatter(;x=1:length(x_kf),y=-2*[x[9] for x in sigma_bounds]))
+    add_trace!(p18,scatter(;x=1:length(x_kf),y=2*[x[9] for x in sigma_bounds]))
+    p19 = plot(1:length(x_kf),[x[10] for x in x_kf])
+    add_trace!(p19,scatter(;x=1:length(x_kf),y=-2*[x[10] for x in sigma_bounds]))
+    add_trace!(p19,scatter(;x=1:length(x_kf),y=2*[x[10] for x in sigma_bounds]))
+    p20 = plot(1:length(x_kf),[x[11] for x in x_kf])
+    add_trace!(p20,scatter(;x=1:length(x_kf),y=-2*[x[11] for x in sigma_bounds]))
+    add_trace!(p20,scatter(;x=1:length(x_kf),y=2*[x[11] for x in sigma_bounds]))
+    p21 = plot(1:length(x_kf),[x[12] for x in x_kf])
+    add_trace!(p21,scatter(;x=1:length(x_kf),y=-2*[x[12] for x in sigma_bounds]))
+    add_trace!(p21,scatter(;x=1:length(x_kf),y=2*[x[12] for x in sigma_bounds]))
+    display([p16 p19; p17 p20; p18 p21])
+
+
     probs = map(x -> x.mode_probs, bel_vec)
     prob1 = map(x -> x[1], probs)
     prob2 = map(x -> x[2], probs)
