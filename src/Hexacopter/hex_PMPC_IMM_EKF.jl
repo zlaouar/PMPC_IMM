@@ -65,12 +65,12 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    #if i < 20
+    if i < 20
         x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
-    #else
-    #    x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
-    #end
-    return wrapitup(x_true), H*wrapitup(x_true+[rand(mpc.Vd);zeros(6)])
+    else
+       x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
+    end
+    return wrapitup(x_true), H*wrapitup(x_true)#+[rand(mpc.Vd);zeros(6)])
 end
 
 function belief_updater(IMM_params::IMM, u, z, SS)
@@ -267,6 +267,7 @@ end
 ###BEN TESTING
 function ekf(x,P_hat0,z,u,H;dt=delT)
     x_hat_p = wrapitup(last(simulate_nonlinear(x,MixMat*u,dt))) # Predicted state
+    @show x
     @show x_hat_p
     ekf_F = ct2dt(Alin(x),dt)
     P_hat = ekf_F * P_hat0 * transpose(ekf_F) + mpc.W # Predicted covariance
@@ -326,7 +327,7 @@ function mfmpc()
     #num_modes = 2
     num_modes = 7
 
-    delT = 0.05 # Timestep
+    delT = 0.1 # Timestep
     num_steps = 40
 
     ns = 12 # number of states
