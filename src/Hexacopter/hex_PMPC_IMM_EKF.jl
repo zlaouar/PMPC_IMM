@@ -65,7 +65,7 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    if i < 20
+    if i < 1
         x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
     else
        x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
@@ -100,7 +100,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # println("Estimates =======")
         # println(last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)))
         # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
-        x_hat_p[:,j] = last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)) # Predicted state
+        x_hat_p[:,j] = last(simulate_nonlinear(wrapitup(x_hat[:,j]),nl_mode(u,j),dt)) # Predicted state
         x_hat_p[:,j] = wrapitup(x_hat_p[:,j])
         P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
         # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
@@ -123,6 +123,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # end
         push!(L,py)
     end
+    @show wrapitup(x_hat[:,2])
     display([copyto!(zeros(12),z) x_hat_p])
     display(S[:,:,2])
     display(P_hat[2])
@@ -387,7 +388,7 @@ function mfmpc()
     for i in 1:M
         noise_mat_val[:,:,i] = rand(mpc.prm,T)
     end
-    model = PMPCSetup(T, M, SS, G, Gmat, unom_init, noise_mat_val)
+    model = PMPCSetup(T, M, SS, Gfail, Gmat, unom_init, noise_mat_val)
     #return model
     P_next = P
     p_ekf = P
@@ -456,12 +457,12 @@ function mfmpc()
         @show round.(x_true,digits=3)
         # display([x_true nlf_est])
 
-        x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H;dt=SS.dt)
-        x_ekf = wrapitup(x_ekf)
-        @show round.(x_ekf,digits=3)
+        #x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H;dt=SS.dt)
+        #x_ekf = wrapitup(x_ekf)
+        #@show round.(x_ekf,digits=3)
 
         # @show round.(wrapitup(x_ekf),digits=3)
-        @info round.(x_true-x_ekf,digits=3)
+        #@info round.(x_true-x_ekf,digits=3)
         println("================")
         # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
@@ -488,9 +489,9 @@ function mfmpc()
         println()
 
         push!(x,x_true)
-        push!(x_kf,x_true-x_ekf)
+        #push!(x_kf,x_true-x_ekf)
         # @show p_ekf
-        push!(sigma_bounds,sqrt.(diag(p_ekf)))
+        #push!(sigma_bounds,sqrt.(diag(p_ekf)))
     end
     p2 = plot(1:length(x_true_vec),[x[1] for x in x_true_vec])
     p3 = plot(1:length(x_true_vec),[x[2] for x in x_true_vec])

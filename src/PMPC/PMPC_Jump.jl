@@ -76,8 +76,8 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
     x0 = @variable(model,x0[i=1:ns] == xinit[i], Param())
 
     for m = 1:M
-        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gfail * u[:,j-1]
-                                                - Gfail * unom_vec[2] )#+ noise_mat[:,j,m])
+        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, na * (j-2) + 1:na * (j-1), m] * u[:,j-1]
+                                                - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom_vec[2] )#+ noise_mat[:,j,m])
         @constraint(model, x[:,1,m] .== x0)
     end
     @show size(Gmat)
