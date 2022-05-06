@@ -328,7 +328,7 @@ function mfmpc()
     num_modes = 7
 
     delT = 0.1 # Timestep
-    num_steps = 40
+    num_steps = 60
 
     ns = 12 # number of states
     na = 6 # number of actuators

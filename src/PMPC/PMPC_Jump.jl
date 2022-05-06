@@ -50,9 +50,10 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
 
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
                         0 1 2 0 0 0 0 0 0 0 0 0 ;
-                        0 2 -12 0 0 0 0 0 0 0 0 0] #-2
+                        0 3 -12 0 0 0 0 0 0 0 0 0] #-2
 
-    xrefval = waypoints[3,:]
+
+    @show xrefval = waypoints[3,:]
     @show unom_init
     # Init Model
 
