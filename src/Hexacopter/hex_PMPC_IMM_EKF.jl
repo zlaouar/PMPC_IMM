@@ -65,12 +65,12 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    if i < 20
-        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
-    else
-       x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
-    end
-    return wrapitup(x_true), H*wrapitup(x_true)#+[rand(mpc.Vd);zeros(6)])
+    # if i < 20
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))+rand(mpc.Wd)
+    # else
+    #    x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
+    # end
+    return wrapitup(x_true), H*wrapitup(x_true+[rand(mpc.Vd);zeros(6)])
 end
 
 function belief_updater(IMM_params::IMM, u, z, SS)
@@ -327,8 +327,8 @@ function mfmpc()
     #num_modes = 2
     num_modes = 7
 
-    delT = 0.1 # Timestep
-    num_steps = 40
+    delT = 0.01 # Timestep
+    num_steps = 200
 
     ns = 12 # number of states
     na = 6 # number of actuators
@@ -397,8 +397,8 @@ function mfmpc()
             x_kf = []
             sigma_bounds = []
     for i in 1:num_steps
-        u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        #u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # push!(u_hist,u)
         # u = u_hist[i]
         # @show MixMat*u
@@ -465,7 +465,7 @@ function mfmpc()
         println("================")
         # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
-        bel, x_est = belief_updater(IMM_params, u, z, SS)
+        # bel, x_est = belief_updater(IMM_params, u, z, SS)
         # x_ekf = x_est
         # @show round.(x_est,digits=3)
 
@@ -475,8 +475,8 @@ function mfmpc()
         # if norm(x_true-x_est) > 300
         #     throw("Est and State disagree!")
         # end
-        IMM_params.bel = bel
-        # bel = belief(bel.means,bel.covariances,[0.99,0.01,0,0,0,0,0])
+        # IMM_params.bel = bel
+        bel = belief(bel.means,bel.covariances,[0.99,0.01,0,0,0,0,0])
         # IMM_params.bel = belief(bel.means,bel.covariances,[0.75,0.25,0,0,0,0,0])
 
         push!(bel_vec, bel)
