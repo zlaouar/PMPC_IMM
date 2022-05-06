@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 COSMO = "1e616198-aa4e-51ec-90a2-23f7fbd31d8d"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 ControlSystems = "a6e380b2-a6ca-5380-bf3e-84a91bcd477e"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"

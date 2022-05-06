@@ -36,8 +36,8 @@ const unom_vec = [[m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6],
 function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
     F, G, H = SS.F, SS.G, SS.H
     # Define Q,R Matrices for PMPC optimization
-    Q = 1000000*(H'*H)
-    Q = Diagonal([1e6, 1e6, 1e8, 1e6, 1e6, 1e6, 0, 0, 0, 0, 0, 0]) |> Matrix
+    Q = 10000000*(H'*H)
+    Q = Diagonal([1e6, 1e6, 1e6, 1e6, 1e6, 1e6, 0, 0, 0, 0, 0, 0]) |> Matrix
     display(Q)
     #Q = Diagonal([5,5,5,10,10,10,1,1,1,10,10,1]) + zeros(nn,nn)
     #Q[3,3] = 10000000
@@ -51,7 +51,7 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
 
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
                         0 1 2 0 0 0 0 0 0 0 0 0 ;
-                        0 3 -2 0 0 0 0 0 0 0 0 0] #-2
+                        1 3 -4 0 0 0 0 0 0 0 0 0] #-2
 
     xrefval = waypoints[3,:]
     #@show unom_init
@@ -78,7 +78,7 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
 
     for m = 1:M
         @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, na * (j-2) + 1:na * (j-1), m] * u[:,j-1]
-                                                - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom[:,j,m] )#+ noise_mat[:,j,m])
+                                                - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom[:,j-1,m] )#+ noise_mat[:,j,m])
         @constraint(model, x[:,1,m] .== x0)
     end
     @show size(Gmat)
@@ -90,7 +90,9 @@ function PMPCSetup(T, M, SS, Gvec, unom_init, noise_mat_val)
     #    @constraint(model, u[:,:,m] .== u[:,:,1])
     #end
 
-    @constraint(model, [i=1:6], 15.5 .>= u[i,:,:] .>= 0.1)
+    #@constraint(model, [i=1:6], 15.5 .>= u[i,:,:] .>= 0.1)
+    @constraint(model, u[:,:] .<= 15.5)
+    @constraint(model, u[:,:] .>= 0.1)
 
     return model
 end
@@ -182,7 +184,7 @@ function umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init
     set_value.(model[:x0], x_est)
     @time optimize!(model)
     _, u_seq = value.(model[:x]), value.(model[:u])
-    set_start_value.(model[:u], u_seq)
+    #set_start_value.(model[:u], u_seq)
 
 
     # Update particle process noise

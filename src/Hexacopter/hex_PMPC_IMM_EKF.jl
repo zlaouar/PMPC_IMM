@@ -2,7 +2,7 @@ using JuMP
 using Ipopt
 using LinearAlgebra
 using ParameterJuMP
-using Plots
+using PlotlyJS
 using Distributions
 # using ElectronDisplay: electrondisplay
 using LaTeXStrings
@@ -126,7 +126,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     #@show P_hat
     #pprintln(P_hat)
     #@show typeof(x_hat_u), typeof(P_hat), typeof(μ)
-    return belief(x_hat_u, P_hat, μ), x
+    return belief(x_hat_u, P_hat, μ), x, P
 end
 
 
@@ -280,7 +280,7 @@ function mfmpc()
     Gfail[:,1] = zeros(ns)
 
     x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    P = Diagonal(0.1*ones(ns)) + zeros(ns,ns)
+    P = Diagonal(1*ones(ns)) + zeros(ns,ns)
     #means = [x0,x0]
     #covariances = [P,P]
     means = [x0,x0,x0,x0,x0,x0,x0]
@@ -292,6 +292,7 @@ function mfmpc()
     IMM_params = IMM(π_mat, num_modes, bel)
     bel_vec = belief[]
 
+    Pvec = Vector{Float64}[]
     x_est_vec = Vector{Float64}[]
     x_true_vec = Vector{Float64}[]
     z_vec = Vector{Float64}[]
@@ -301,6 +302,7 @@ function mfmpc()
     push!(bel_vec, bel)
     push!(x_est_vec, x_est)
     push!(x_true_vec, x_true)
+    push!(Pvec, 2*sqrt.(diag(P)))
 
     Ginit = zeros(ns, T * na, M)
     zero_mat = Matrix(I, na, na)
@@ -344,41 +346,75 @@ function mfmpc()
         #@show round.(x_true,digits=3)
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
         #@show C
-        bel, x_est = belief_updater(IMM_params, u, z, SS)
+        bel, x_est, P = belief_updater(IMM_params, u, z, SS)
         IMM_params.bel = bel
         # IMM_params.bel = belief(bel.means,bel.covariances,[0.75,0.25,0,0,0,0,0])
 
         push!(bel_vec, bel)
         push!(x_est_vec, x_est)
+        push!(Pvec, 2*sqrt.(diag(P)))
         push!(x_true_vec, x_true)
         push!(z_vec, z)
         push!(u_vec, u)
         @show i
     end
-    return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
+    return bel_vec, x_est_vec, x_true_vec, Pvec, z_vec, u_vec, delT, num_steps
 end
 
-bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps = @time mfmpc()
+bel_vec, x_est_vec, x_true_vec, Pvec, z_vec, u_vec, delT, num_steps = @time mfmpc()
 
 #model = mfmpc()
 
 #@profiler optimize!(model)
 
 # Plotting and Analysis
+fig = make_subplots(rows=3, cols=1, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
 tvec = 0:delT:num_steps*delT
 hex_pos_true = map(x -> x[1:3], x_true_vec)
-plt1 = plot(tvec, map(x -> x[1], hex_pos_true), xlabel = "time (secs)", ylabel = "x-position (m)", label = "true")
-plt2 = plot(tvec, map(x -> x[2], hex_pos_true), xlabel = "time (secs)", ylabel = "y-position (m)", label = "true")
-plt3 = plot(tvec, -map(x -> x[3], hex_pos_true), xlabel = "time (secs)", ylabel = "z-position (m)", label = "true")
-
 hex_pos_est = map(x -> x[1:3], x_est_vec)
-plot!(plt1, tvec, map(x -> x[1], hex_pos_est), xlabel = "time (secs)", ylabel = "x-position (m)", label = "est")
-ylims!((-10,10))
-plot!(plt2, tvec, map(x -> x[2], hex_pos_est), xlabel = "time (secs)", ylabel = "y-position (m)", label = "est")
-ylims!((-10,10))
-plot!(plt3, tvec, -map(x -> x[3], hex_pos_est), xlabel = "time (secs)", ylabel = "z-position (m)", label = "est")
-ylims!((-1,11))
-display(plot(plt1, plt2, plt3, layout = (3,1), size=(600, 700)))
+
+
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_true), 
+            line=attr(color="rgba(0,100,80,1)"), 
+            name="true"), row=1, col=1)
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[2], hex_pos_true), 
+            line=attr(color="rgba(10,10,200,1)"), 
+            showlegend=false), row=2, col=1)
+add_trace!(fig, scatter(x=tvec, y=-map(x -> x[3], hex_pos_true), 
+            line=attr(color="rgba(70,10,100,1)"), 
+            showlegend=false), row=3, col=1)
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_est), 
+            line=attr(color="rgba(0,100,80,1)"), 
+            name="estimated"), row=1, col=1)
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[2], hex_pos_est), 
+            line=attr(color="rgba(10,10,200,1)"), 
+            showlegend=false), row=2, col=1)
+add_trace!(fig, scatter(x=tvec, y=-map(x -> x[3], hex_pos_est), 
+            line=attr(color="rgba(70,10,100,1)"), 
+            showlegend=false), row=3, col=1)
+
+function add_bounds(fig, est_state, var_num, shade)
+    y_upper_x = est_state + map(p -> p[var_num], Pvec)
+    y_lower_x = est_state - map(p -> p[var_num], Pvec)
+    error_pos_x = scatter(
+        x=vcat(tvec, reverse(tvec)), # x, then x reversed
+        y=vcat(y_upper_x, reverse(y_lower_x)), # upper, then lower reversed
+        fill="toself",
+        fillcolor=shade,
+        line=attr(color="rgba(255,255,255,0)"),
+        hoverinfo="skip",
+        name="2σ-bounds",
+    )
+    add_trace!(fig, error_pos_x, row=var_num, col=1)
+end
+
+add_bounds(fig, map(x -> x[1], hex_pos_est), 1, "rgba(0,100,80,0.2)")
+add_bounds(fig, map(x -> x[2], hex_pos_est), 2, "rgba(10,10,200,0.2)")
+add_bounds(fig, -map(x -> x[3], hex_pos_est), 3, "rgba(70,10,100,0.2)")
+
+relayout!(fig, title_text="Hexacopter Position - IMM-LKF")
+display(fig)
+PlotlyJS.savefig(fig, joinpath(@__DIR__, "../..",  "figs", "lkf_pos.png"))
 
 # Mode Probs
 probs = map(x -> x.mode_probs, bel_vec)
@@ -389,7 +425,22 @@ prob4 = map(x -> x[4], probs)
 prob5 = map(x -> x[5], probs)
 prob6 = map(x -> x[6], probs)
 prob7 = map(x -> x[7], probs)
-plot(tvec, prob1, label = "mode 1")
+
+mode_probs_fig = plot(scatter(x=tvec, y=prob1, line=attr(color="rgba(0,100,80,1)"), name="nominal"), 
+            Layout(xaxis_title = "time (s)", 
+            title_text="IMM-LKF Mode Probabilities", legend_title_text="Modes",
+yaxis_title = "probability"))
+
+add_trace!(mode_probs_fig, scatter(x=tvec, y=prob2, name = "rotor 1 fail"))
+add_trace!(mode_probs_fig, scatter(x=tvec, y=prob3, name = "rotor 2 fail"))
+add_trace!(mode_probs_fig, scatter(x=tvec, y=prob4, name = "rotor 3 fail"))
+add_trace!(mode_probs_fig, scatter(x=tvec, y=prob5, name = "rotor 4 fail"))
+add_trace!(mode_probs_fig, scatter(x=tvec, y=prob6, name = "rotor 5 fail"))
+add_trace!(mode_probs_fig, scatter(x=tvec, y=prob7, name = "rotor 6 fail"))
+
+display(mode_probs_fig)
+PlotlyJS.savefig(mode_probs_fig, joinpath(@__DIR__, "../..",  "figs", "lkf_modes.png"))
+#=plot(tvec, prob1, label = "mode 1")
 plot!(tvec, prob2, label = "mode 2")
 plot!(tvec, prob3, label = "mode 3")
 plot!(tvec, prob4, label = "mode 4")
@@ -408,7 +459,7 @@ uplt4 = plot(tvec[2:end], map(u -> u[4], u_vec), label = :false)
 uplt5 = plot(tvec[2:end], map(u -> u[5], u_vec), label = :false)
 uplt6 = plot(tvec[2:end], map(u -> u[6], u_vec), label = :false)
 
-display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600, 700)))
+display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600, 700))) =#
 
 ###BEN TESTING
 function ekf(x,P_hat0,z,u;H=H,dt=delT)
