@@ -18,7 +18,7 @@ const d = 1.140E-7 # N*m/rad^2
 const nn = 12 # num state variables
 const nmFM = 4 # num of virtual
 const nm = 6 # num actuator inputs
-const np = 6 # num outputs
+const np = 12 # num outputs
 A = zeros(nn,nn)
 Bv = zeros(nn,nmFM)
 
@@ -55,7 +55,13 @@ const C = [1 0 0 0 0 0 0 0 0 0 0 0;
            0 0 1 0 0 0 0 0 0 0 0 0;
            0 0 0 1 0 0 0 0 0 0 0 0;
            0 0 0 0 1 0 0 0 0 0 0 0;
-           0 0 0 0 0 1 0 0 0 0 0 0]#Diagonal(ones(np)) + zeros(np, np)
+           0 0 0 0 0 1 0 0 0 0 0 0;
+           0 0 0 0 0 0 1 0 0 0 0 0;
+           0 0 0 0 0 0 0 1 0 0 0 0;
+           0 0 0 0 0 0 0 0 1 0 0 0;
+           0 0 0 0 0 0 0 0 0 1 0 0;
+           0 0 0 0 0 0 0 0 0 0 1 0;
+           0 0 0 0 0 0 0 0 0 0 0 1]#Diagonal(ones(np)) + zeros(np, np)
 const D = zeros(np, nm)
 
 const unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]

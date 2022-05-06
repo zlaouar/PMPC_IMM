@@ -14,11 +14,11 @@ const g = 9.81
 
 const ns = 12 # number of states
 const na = 6 # number of actuators
-const nm = 6 # number of measurements
+const nm = 12 # number of measurements
 
 #const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const W = Diagonal(ones(12)*0.001) |> Matrix #Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const V = Diagonal([0.001, 0.001, 0.001, 0.001, 0.001, 0.001]) |> Matrix#Diagonal(0.01*ones(nm)) + zeros(nm,nm)
+const W = 10*Diagonal(ones(12)*0.001) |> Matrix #Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+const V = Diagonal(ones(12)*0.001)|> Matrix # Diagonal([0.001, 0.001, 0.001, 0.001, 0.001, 0.001]) |> Matrix#Diagonal(0.01*ones(nm)) + zeros(nm,nm)
 const Wd = MvNormal(W)
 const Vd = MvNormal(V)
 
@@ -50,7 +50,7 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
 
     waypoints = Float64[0 1 1 0 0 0 0 0 0 0 0 0 ;
                         0 1 2 0 0 0 0 0 0 0 0 0 ;
-                        0 0 -10 0 0 0 0 0 0 0 0 0] #-2
+                        0 2 -12 0 0 0 0 0 0 0 0 0] #-2
 
     xrefval = waypoints[3,:]
     @show unom_init
@@ -113,8 +113,8 @@ mutable struct ssModel
     G::SMatrix{12,6,Float64}
     Gfail::SMatrix{12,6,Float64}
     Gmode::Vector{SMatrix{12, 6, Float64}}
-    H::SMatrix{6,12,Float64}
-    D::SMatrix{6,6,Float64}
+    H::SMatrix{12,12,Float64}
+    D::SMatrix{12,6,Float64}
     dt::Float64
 end
 

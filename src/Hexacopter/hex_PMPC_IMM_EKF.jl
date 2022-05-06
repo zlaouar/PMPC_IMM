@@ -65,12 +65,12 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    # if i < 20
+    if i < 5
         x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))+rand(mpc.Wd)
-    # else
-    #    x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
-    # end
-    return wrapitup(x_true), H*wrapitup(x_true+[rand(mpc.Vd);zeros(6)])
+    else
+       x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
+    end
+    return wrapitup(x_true), H*wrapitup(x_true+rand(mpc.Vd))
 end
 
 function belief_updater(IMM_params::IMM, u, z, SS)
@@ -80,11 +80,11 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     P_prev = bel.covariances
     μ_prev = bel.mode_probs
 
-    S = Array{Float64, 3}(undef, 6, 6, num_modes)
-    K = Array{Float64, 3}(undef, 12, 6, num_modes)
+    S = Array{Float64, 3}(undef, 12, 12, num_modes)
+    K = Array{Float64, 3}(undef, 12, 12, num_modes)
     x_hat_p = Array{Float64, 2}(undef, 12, num_modes)
     x_hat_u = Vector{Float64}[]
-    v_arr = Array{Float64, 2}(undef, 6, num_modes)
+    v_arr = Array{Float64, 2}(undef, 12, num_modes)
     L = Float64[]
     μ = Float64[]
 
@@ -265,8 +265,8 @@ function ct2dt(mat,dt)
 end
 
 ###BEN TESTING
-function ekf(x,P_hat0,z,u,H;dt=delT)
-    x_hat_p = wrapitup(last(simulate_nonlinear(x,MixMat*u,dt))) # Predicted state
+function ekf(x,P_hat0,z,u,H,m;dt=delT)
+    x_hat_p = wrapitup(last(simulate_nonlinear(x,nl_mode(u,m),dt))) # Predicted state
     @show x
     @show x_hat_p
     ekf_F = ct2dt(Alin(x),dt)
@@ -327,12 +327,12 @@ function mfmpc()
     #num_modes = 2
     num_modes = 7
 
-    delT = 0.01 # Timestep
-    num_steps = 200
+    delT = 0.1 # Timestep
+    num_steps = 40
 
     ns = 12 # number of states
     na = 6 # number of actuators
-    nm = 6 # number of measurements
+    nm = 12 # number of measurements
 
     lin_model = LinearModel()
     A, B, C, D = lin_model.A, lin_model.B, lin_model.C, lin_model.D
@@ -387,7 +387,7 @@ function mfmpc()
     for i in 1:M
         noise_mat_val[:,:,i] = rand(mpc.prm,T)
     end
-    model = PMPCSetup(T, M, SS, G, Gmat, unom_init, noise_mat_val)
+    model = PMPCSetup(T, M, SS, Gfail, Gmat, unom_init, noise_mat_val)
     #return model
     P_next = P
     p_ekf = P
@@ -397,8 +397,8 @@ function mfmpc()
             x_kf = []
             sigma_bounds = []
     for i in 1:num_steps
-        # u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
+        # u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # push!(u_hist,u)
         # u = u_hist[i]
         # @show MixMat*u
@@ -456,16 +456,17 @@ function mfmpc()
         @show round.(x_true,digits=3)
         # display([x_true nlf_est])
 
-        x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H;dt=SS.dt)
-        x_ekf = wrapitup(x_ekf)
-        @show round.(x_ekf,digits=3)
+        # x_ekf = wrapitup(x_ekf)
+        # @show round.(x_ekf,digits=3)
 
         # @show round.(wrapitup(x_ekf),digits=3)
         @info round.(x_true-x_ekf,digits=3)
         println("================")
         # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
-        # bel, x_est = belief_updater(IMM_params, u, z, SS)
+        bel, x_est = belief_updater(IMM_params, u, z, SS)
+        m = argmax(bel.mode_probs)
+        x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H,m;dt=SS.dt)
         # x_ekf = x_est
         # @show round.(x_est,digits=3)
 
@@ -475,8 +476,8 @@ function mfmpc()
         # if norm(x_true-x_est) > 300
         #     throw("Est and State disagree!")
         # end
-        # IMM_params.bel = bel
-        bel = belief(bel.means,bel.covariances,[0.99,0.01,0,0,0,0,0])
+        IMM_params.bel = bel
+        # bel = belief(bel.means,bel.covariances,[0.99,0.01,0,0,0,0,0])
         # IMM_params.bel = belief(bel.means,bel.covariances,[0.75,0.25,0,0,0,0,0])
 
         push!(bel_vec, bel)
