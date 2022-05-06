@@ -328,7 +328,7 @@ function mfmpc()
     num_modes = 7
 
     delT = 0.1 # Timestep
-    num_steps = 60
+    num_steps = 80
 
     ns = 12 # number of states
     na = 6 # number of actuators
@@ -396,6 +396,11 @@ function mfmpc()
             x = []
             x_kf = []
             sigma_bounds = []
+            Pvec = Vector{Float64}[]
+            push!(bel_vec, bel)
+   push!(x_est_vec, x_est)
+   push!(x_true_vec, x_true)
+   push!(Pvec, 2*sqrt.(diag(P)))
     for i in 1:num_steps
         u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         # u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
@@ -492,6 +497,8 @@ function mfmpc()
         push!(x_kf,x_true-x_ekf)
         # @show p_ekf
         push!(sigma_bounds,sqrt.(diag(p_ekf)))
+
+        push!(Pvec, 2*sqrt.(diag(P)))
     end
     p2 = plot(1:length(x_true_vec),[x[1] for x in x_true_vec])
     p3 = plot(1:length(x_true_vec),[x[2] for x in x_true_vec])
@@ -559,14 +566,66 @@ function mfmpc()
     add_trace!(plt,scatter(;x=1:length(prob1), y=prob7, label = "mode 7"))
     display(plt)
     # display(plot(1:length(x),x))
-    return bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps
+
+
+    return bel_vec, x_est_vec, x_true_vec, Pvec, z_vec, u_vec, delT, num_steps
 end
 
-bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps = @time mfmpc()
+bel_vec, x_est_vec, x_true_vec, Pvec, z_vec, u_vec, delT, num_steps = @time mfmpc()
 
 #model = mfmpc()
 
 #@profiler optimize!(model)
+
+# Plotting and Analysis _NEW
+fig = make_subplots(rows=3, cols=1, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
+tvec = 0:delT:num_steps*delT
+hex_pos_true = map(x -> x[1:3], x_true_vec)
+hex_pos_est = map(x -> x[1:3], x_est_vec)
+
+
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_true),
+            line=attr(color="rgba(0,100,80,1)"),
+            name="true"), row=1, col=1)
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[2], hex_pos_true),
+            line=attr(color="rgba(10,10,200,1)"),
+            showlegend=false), row=2, col=1)
+add_trace!(fig, scatter(x=tvec, y=-map(x -> x[3], hex_pos_true),
+            line=attr(color="rgba(70,10,100,1)"),
+            showlegend=false), row=3, col=1)
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_est),
+            line=attr(color="rgba(0,100,80,1)"),
+            name="estimated"), row=1, col=1)
+add_trace!(fig, scatter(x=tvec, y=map(x -> x[2], hex_pos_est),
+            line=attr(color="rgba(10,10,200,1)"),
+            showlegend=false), row=2, col=1)
+add_trace!(fig, scatter(x=tvec, y=-map(x -> x[3], hex_pos_est),
+            line=attr(color="rgba(70,10,100,1)"),
+            showlegend=false), row=3, col=1)
+
+function add_bounds(fig, est_state, var_num, shade)
+    y_upper_x = est_state + map(p -> p[var_num], Pvec)
+    y_lower_x = est_state - map(p -> p[var_num], Pvec)
+    error_pos_x = scatter(
+        x=vcat(tvec, reverse(tvec)), # x, then x reversed
+        y=vcat(y_upper_x, reverse(y_lower_x)), # upper, then lower reversed
+        fill="toself",
+        fillcolor=shade,
+        line=attr(color="rgba(255,255,255,0)"),
+        hoverinfo="skip",
+        name="2σ-bounds",
+    )
+    add_trace!(fig, error_pos_x, row=var_num, col=1)
+end
+
+add_bounds(fig, map(x -> x[1], hex_pos_est), 1, "rgba(0,100,80,0.2)")
+add_bounds(fig, map(x -> x[2], hex_pos_est), 2, "rgba(10,10,200,0.2)")
+add_bounds(fig, -map(x -> x[3], hex_pos_est), 3, "rgba(70,10,100,0.2)")
+
+relayout!(fig, title_text="Hexacopter Position - IMM-LKF")
+display(fig)
+# PlotlyJS.savefig(fig, joinpath(@__DIR__, "../..",  "figs", "lkf_pos.png"))
+
 
 # Plotting and Analysis
 tvec = 0:delT:num_steps*delT
