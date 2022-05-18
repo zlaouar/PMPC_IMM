@@ -18,7 +18,7 @@ const nm = 6 # number of measurements
 
 #const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
 const W = Diagonal(ones(12)*0.001) |> Matrix #Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const V = Diagonal([0.001, 0.001, 0.001, 0.001, 0.001, 0.001]) |> Matrix#Diagonal(0.01*ones(nm)) + zeros(nm,nm)
+const V = Diagonal([0.001, 0.001, 0.01, 0.001, 0.001, 0.001]) |> Matrix#Diagonal(0.01*ones(nm)) + zeros(nm,nm)
 const Wd = MvNormal(W)
 const Vd = MvNormal(V)
 
@@ -53,7 +53,7 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
                         0 1 -10 0 0 0 0 0 0 0 0 0] #-2
 
     xrefval = waypoints[3,:]
-    @show unom_init
+    #@show unom_init
     # Init Model
 
     model = Model(Ipopt.Optimizer)
@@ -76,8 +76,10 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
     x0 = @variable(model,x0[i=1:ns] == xinit[i], Param())
 
     for m = 1:M
-        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, na * (j-2) + 1:na * (j-1), m] * u[:,j-1]
-                                                - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom_vec[2] )#+ noise_mat[:,j,m])
+        #@constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + Gmat[:, na * (j-2) + 1:na * (j-1), m] * u[:,j-1]
+        #                                        - Gmat[:, na * (j-2) + 1:na * (j-1), m] * unom_vec[2] )#+ noise_mat[:,j,m])
+        @constraint(model, [j=2:T], x[:,j,m] .== F * x[:,j-1,m] + G * u[:,j-1]
+                                                - G * unom_vec[1] )
         @constraint(model, x[:,1,m] .== x0)
     end
     @show size(Gmat)

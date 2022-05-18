@@ -65,7 +65,7 @@ end
 
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
-    if i < 1
+    if i < 20
         x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
     else
        x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
@@ -99,11 +99,11 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # println()
         # println("Estimates =======")
         # println(last(simulate_nonlinear(x_hat[:,j],nl_mode(u,j),dt)))
-        # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
+        #x_hat_p[:,j] = F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j]
         x_hat_p[:,j] = last(simulate_nonlinear(wrapitup(x_hat[:,j]),nl_mode(u,j),dt)) # Predicted state
         x_hat_p[:,j] = wrapitup(x_hat_p[:,j])
         P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
-        # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
+        #P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
         S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
@@ -123,10 +123,13 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         # end
         push!(L,py)
     end
-    @show wrapitup(x_hat[:,2])
+    #@show wrapitup(x_hat[:,2])
+    @show round.(x_prev[1], digits = 9)
+    @show round.(x_hat[:,1], digits = 9)
+    @show round.(x_hat_p[:,1], digits = 9)
     display([copyto!(zeros(12),z) x_hat_p])
-    display(S[:,:,2])
-    display(P_hat[2])
+    #display(S[:,:,2])
+    #display(P_hat[2])
     # @show MvNormal(Symmetric(S[:,:,1]))
     # @show v_arr[:,1]
     # @show L
@@ -445,16 +448,18 @@ function mfmpc()
         #     u =  [1,1,1,1,1,1.0].*(2.4*9.81)/6
         # end
         # @show u
+        println("===============================================================")
         @warn u
         @show MixMat*u
         #u = [1, 1, 1, 1, 1, 1]
         #u = ulqr(x_est, L, i)
-        println("================")
+        
         # nlf_est = ct2dt(Alin(x_true),SS.dt)*x_true+SS.G*u
+        @show round.(x_true, digits=9)
         x_true, z = nl_dynamics(x_true, u, SS, i) #Update to NL
-
+        @show round.(x_true, digits=9)
         @show z
-        @show round.(x_true,digits=3)
+        #@show round.(x_true,digits=3)
         # display([x_true nlf_est])
 
         #x_ekf, p_ekf = ekf(x_ekf,p_ekf,z,u,SS.H;dt=SS.dt)
@@ -463,9 +468,10 @@ function mfmpc()
 
         # @show round.(wrapitup(x_ekf),digits=3)
         #@info round.(x_true-x_ekf,digits=3)
-        println("================")
+        #println("================")
         # println()
         #x_est, P_next = stateEst(x_est, P_next, u, z, SS)
+        #@show z
         bel, x_est = belief_updater(IMM_params, u, z, SS)
         # x_ekf = x_est
         # @show round.(x_est,digits=3)
