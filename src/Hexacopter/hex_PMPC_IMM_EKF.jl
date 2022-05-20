@@ -9,6 +9,7 @@ using Distributions
 using LaTeXStrings
 using ControlSystems
 using StaticArrays
+#using Logging
 
 import PMPC_IMM
 using PMPC_IMM.PMPC: umpc, IMM, ssModel, PMPCSetup, belief, genGmat!
@@ -23,6 +24,10 @@ const R = Diagonal([1, 1, 1, 1, 1, 1]) + zeros(6, 6)
 const x_ref = [7, 3, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 const unom_vec = [hex.unom, hex.unom_fail]
+
+#io = open("log.txt", "w+")
+#logger = SimpleLogger(io)
+#global_logger(logger)
 
 function ulqr(x, L, i)
     u_lqr = - L * (x - x_ref) #zeros(4)
@@ -66,9 +71,9 @@ end
 function nl_dynamics(x, u, SS, i)
     dt, H = SS.dt, SS.H
     if i < 20
-        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt)) + rand(mpc.Wd)
     else
-       x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt))#+rand(mpc.Wd)
+       x_true = last(simulate_nonlinear(x,nl_mode(u,2),dt)) + rand(mpc.Wd)
     end
     return wrapitup(x_true), H*wrapitup(x_true)#+[rand(mpc.Vd);zeros(6)])
 end
@@ -124,6 +129,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
         push!(L,py)
     end
     #@show wrapitup(x_hat[:,2])
+    #@info "xdata" round.(x_prev[1], digits = 9) round.(x_hat[:,1], digits = 9) round.(x_hat_p[:,1], digits = 9)
     @show round.(x_prev[1], digits = 9)
     @show round.(x_hat[:,1], digits = 9)
     @show round.(x_hat_p[:,1], digits = 9)
@@ -139,6 +145,7 @@ function belief_updater(IMM_params::IMM, u, z, SS)
     end
     @info L
     @info μ
+    #@info μ
     # @show μ
     # Combination of Estimates
     x = wrapitup(sum(x_hat_u[j] * μ[j] for j in 1:num_modes)) # overall estimate
@@ -350,7 +357,7 @@ function mfmpc()
 
     x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     # P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-    P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+    P = Diagonal(0.1*ones(ns)) + zeros(ns,ns)
     #means = [x0,x0]
     #covariances = [P,P]
     means = [x0,x0,x0,x0,x0,x0,x0]
@@ -403,51 +410,7 @@ function mfmpc()
     for i in 1:num_steps
         u = umpc(x_est, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
         #u = umpc(x_ekf, model, bel, Gmat, Gmode, T, M, nm, noise_mat_val, unom_init)
-        # push!(u_hist,u)
-        # u = u_hist[i]
-        # @show MixMat*u
-        #Climb and Stop Control
-        # if i < 20
-        #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
-        # # elseif i<21
-        # #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
-        # # elseif i<25
-        # #     u = [1,1,1,1,1,1].*(3.0*9.81)/6
-        # elseif i<25
-        #     u = [1,1,1,1,1,1.0].*(0.1*9.81)/6
-        # # elseif i>=40
-        # #     u = [1,0,1,1,0,1].*(2.4*9.81)/4
-        # else
-        #     u = [1,1,1,1,1,1.0].*(2.4*9.81)/6
-        # end
-        # @show maximum(bel.mode_probs)
-        # sp = 10
-        # K = 2
-        # T = 2.4*9.81 #+K*(sp-x_est[3])
-        # if argmax(bel.mode_probs) == 1
-        #     u = [1,1,1,1,1,1.0].*(T)/6
-        # elseif argmax(bel.mode_probs) == 2 || maximum(bel.mode_probs) == 5
-        #     u = [0,1,1,0,1,1].*(T)/4
-        # elseif argmax(bel.mode_probs) == 4 || maximum(bel.mode_probs) == 7
-        #     u = [1,1,0,1,1,0].*(T)/4
-        # elseif argmax(bel.mode_probs) == 3 || maximum(bel.mode_probs) == 6
-        #     u = [1,0,1,1,0,1].*(T)/4
-        # end
-        # if i< 40
-        #     u = [1,1,1,1,1,1.0].*(T)/6
-        # else
-        #     u = [0,1,1,0,1,1].*(T)/4
-        # end
-        # if i <= 6
-        #     u = [1,1,1,1,1,1.001].*(3.0*9.81)/6
-        # # elseif i == 6
-        # #     u =  [1,1,1,1,1,1.00].*(2.4*9.81)/6
-        # elseif i <= 11
-        #     u =  [1,1,1,1,1,0.999].*(3.0*9.81)/6
-        # else
-        #     u =  [1,1,1,1,1,1.0].*(2.4*9.81)/6
-        # end
-        # @show u
+     
         println("===============================================================")
         @warn u
         @show MixMat*u
@@ -575,6 +538,7 @@ bel_vec, x_est_vec, x_true_vec, z_vec, u_vec, delT, num_steps = @time mfmpc()
 #@profiler optimize!(model)
 
 # Plotting and Analysis
+#=
 tvec = 0:delT:num_steps*delT
 hex_pos_true = map(x -> x[1:3], x_true_vec)
 plt1 = plot(tvec, map(x -> x[1], hex_pos_true), xlabel = "time (secs)", ylabel = "x-position (m)", label = "true")
@@ -624,7 +588,7 @@ display(plot(uplt1, uplt2, uplt3, uplt4, uplt5, uplt6, layout = (3,2), size=(600
 o_mat = [H;H*A;H*A^2;H*A^3;H*A^4;H*A^5;H*A^6;H*A^7;H*A^8;H*A^9;H*A^10;H*A^11]
 [H2;H2*A;H2*A^2;H2*A^3;H2*A^4;H2*A^5;H2*A^6;H2*A^7;H2*A^8;H2*A^9;H2*A^10;H2*A^11]
 H2 = [H; zeros(3,3) I zeros(3,6)]
-
+=#
 function test_dyn(x)
     matrix_res = x
     lin_res = x
@@ -637,3 +601,6 @@ function test_dyn(x)
     end
     return [nl_res matrix_res lin_res]
 end
+
+print("hello")
+#close(io)
