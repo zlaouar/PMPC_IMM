@@ -3,15 +3,19 @@
 
 using SparseArrays, OSQP
 using PlotlyJS
+using ControlSystems
 using PMPC_IMM.Hexacopter: LinearModel
 
 # Utility function
 speye(N) = spdiagm(ones(N))
 
 # Discrete time model of a Hexacopter
+Δt = 0.1
 lin_model = LinearModel()
-Ad, Bd, C, D = sparse(lin_model.A), sparse(lin_model.B), lin_model.C, lin_model.D
-
+A, B, C, D = lin_model.A, lin_model.B, lin_model.C, lin_model.D
+sys = ss(A, B, C, D)
+sysd = c2d(sys, Δt)
+Ad, Bd, H, D = sparse(sysd.A), sparse(sysd.B), sysd.C, sysd.D
 
 
 
@@ -19,20 +23,24 @@ Ad, Bd, C, D = sparse(lin_model.A), sparse(lin_model.B), lin_model.C, lin_model.
 (nx, nu) = size(Bd)
 
 # Constraints
-u0 = 10.5916
-umin = [9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
-umax = [13, 13, 13, 13, 13, 13] .- u0
-xmin = [[-pi/6, -pi/6, -Inf, -Inf, -Inf, -1]; -Inf .* ones(6)]
-xmax = [[pi/6,  pi/6,  Inf,  Inf,  Inf, Inf]; Inf .* ones(6)]
+u0 = 15.5916
+m = 2.4 # kg
+g = 9.81
+unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
+umin = ones(6) * 0.1 .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
+umax = ones(6) * 15 .- unom #[13, 13, 13, 13, 13, 13] .- u0
+xmin = [[-Inf, -Inf, -Inf, -Inf, -Inf, -1]; -Inf .* ones(6)]
+xmax = [[Inf,  Inf,  Inf,  Inf,  Inf, Inf]; Inf .* ones(6)]
 
 # Objective function
-Q = spdiagm([0, 0, 10, 10, 10, 10, 0, 0, 0, 5, 5, 5])
+Q = spdiagm([5, 5, 5, 10, 10, 1, 1, 1, 1, 10, 10, 1])
+#Q = spdiagm([0, 0, 10, 10, 10, 10, 0, 0, 0, 5, 5, 5])
 QN = Q
 R = 0.1 * speye(nu)
 
 # Initial and reference states
 x0 = zeros(12)
-xr = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+xr = [1, 2, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 # Prediction horizon
 N = 10
@@ -62,7 +70,7 @@ m = OSQP.Model()
 OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
 
 # Simulate in closed loop
-nsim = 15;
+nsim = 40;
 xvec = Vector{Float64}[]
 push!(xvec, x0)
 @time for _ in 1 : nsim
@@ -76,6 +84,7 @@ push!(xvec, x0)
 
     # Apply first control input to the plant
     ctrl = res.x[(N+1)*nx+1:(N+1)*nx+nu]
+    @info ctrl
     global x0 = Ad * x0 + Bd * ctrl
     push!(xvec, x0)
 
@@ -85,8 +94,8 @@ push!(xvec, x0)
 end
 
 hex_pos_true = xvec
-#tvec = 0:delT:num_steps*delT
-tvec = 1:length(xvec)
+tvec = 0:Δt:nsim*Δt
+#tvec = 1:length(xvec)
 fig = make_subplots(rows=3, cols=1, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
 
 add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_true),
@@ -94,10 +103,11 @@ add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_true),
             name="true"), row=1, col=1)
 add_trace!(fig, scatter(x=tvec, y=map(x -> x[2], hex_pos_true),
             line=attr(color="rgba(10,10,200,1)"),
-            showlegend=false), row=2, col=1)
-add_trace!(fig, scatter(x=tvec, y=map(x -> x[3], hex_pos_true),
+            showlegend=false, yaxis_range=[-1,1]), row=2, col=1)
+add_trace!(fig, scatter(x=tvec, y=-getindex.(hex_pos_true, 3),
             line=attr(color="rgba(70,10,100,1)"),
             showlegend=false), row=3, col=1)
 
-relayout!(fig, title_text="Hexacopter Position")
+relayout!(fig, title_text="Hexacopter Position", yaxis_range=[-1,1],
+            yaxis2_range=[-1,3], yaxis3_range=[-1,11])
 display(fig)

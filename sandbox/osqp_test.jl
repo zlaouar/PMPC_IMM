@@ -48,7 +48,7 @@ R = 0.1 * speye(nu)
 
 # Initial and reference states
 x0 = zeros(12)
-xr = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+xr = [0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0]
 
 # Prediction horizon
 N = 10
@@ -78,8 +78,9 @@ m = OSQP.Model()
 OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
 
 # Simulate in closed loop
-nsim = 15;
+nsim = 40;
 xvec = Vector{Float64}[]
+uvec = Vector{Float64}[]
 push!(xvec, x0)
 @time for _ in 1 : nsim
     # Solve
@@ -92,6 +93,7 @@ push!(xvec, x0)
 
     # Apply first control input to the plant
     ctrl = res.x[(N+1)*nx+1:(N+1)*nx+nu]
+    push!(uvec, ctrl)
     global x0 = Ad * x0 + Bd * ctrl
     push!(xvec, x0)
 
@@ -110,10 +112,23 @@ add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_true),
             name="true"), row=1, col=1)
 add_trace!(fig, scatter(x=tvec, y=map(x -> x[2], hex_pos_true),
             line=attr(color="rgba(10,10,200,1)"),
-            showlegend=false), row=2, col=1)
+            showlegend=false, yaxis_range=[-1,1]), row=2, col=1)
 add_trace!(fig, scatter(x=tvec, y=map(x -> x[3], hex_pos_true),
             line=attr(color="rgba(70,10,100,1)"),
             showlegend=false), row=3, col=1)
 
-relayout!(fig, title_text="Hexacopter Position")
+relayout!(fig, title_text="Hexacopter Position", yaxis_range=[-1,1],
+            yaxis2_range=[-1,1], yaxis3_range=[-1,6])
 display(fig)
+
+ctrl_fig = make_subplots(rows=2, cols=2, x_title = "time(s)")
+add_trace!(ctrl_fig, scatter(x=tvec, y=getindex.(uvec,1), name="rotor1"),
+            row=1, col=1)
+add_trace!(ctrl_fig, scatter(x=tvec, y=getindex.(uvec,2), name="rotor2"),
+            row=1, col=2)
+add_trace!(ctrl_fig, scatter(x=tvec, y=getindex.(uvec,3), name="rotor3"),
+            row=2, col=1)
+add_trace!(ctrl_fig, scatter(x=tvec, y=getindex.(uvec,4), name="rotor4"),
+            row=2, col=2)         
+            
+display(ctrl_fig)          
