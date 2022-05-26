@@ -46,20 +46,29 @@ xr = [1, 2, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 N = 10
 
 # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
+M = 2 # number of scenarios
+
 # - quadratic objective
 P = blockdiag(kron(speye(N), Q), QN, kron(speye(N), R))
+xblk = P[1:132, 1:132]
+P = blockdiag(xblk, xblk, P[133:end, 133:end])
 # - linear objective
 q = [repeat(-Q * xr, N); -QN * xr; zeros(N*nu)]
+q = [repeat(q[1:132], M); q[133:end]]
 # - linear dynamics
 Ax = kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad)
+Ablk = Ax[1:132,1:132]
+Ax = blockdiag(Ablk, Ablk)
+#Ax = kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad)
 Bu = kron([spzeros(1, N); speye(N)], Bd)
+#Bu = kron([spzeros(1, N); speye(N)], Bd)
 Aeq = [Ax Bu]
-leq = [-x0; zeros(N * nx)]
+leq = repeat([-x0; zeros(N * nx)], M)
 ueq = leq
 # - input and state constraints
-Aineq = speye((N + 1) * nx + N * nu)
-lineq = [repeat(xmin, N + 1); repeat(umin, N)]
-uineq = [repeat(xmax, N + 1); repeat(umax, N)]
+Aineq = repeat(speye((N + 1) * nx + N * nu), M)
+lineq = repeat([repeat(xmin, N + 1); repeat(umin, N)], M)
+uineq = repeat([repeat(xmax, N + 1); repeat(umax, N)], M)
 # - OSQP constraints
 A, l, u = [Aeq; Aineq], [leq; lineq], [ueq; uineq]
 
