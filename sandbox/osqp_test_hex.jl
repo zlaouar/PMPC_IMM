@@ -60,15 +60,15 @@ Ax = kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad)
 Ablk = Ax[1:132,1:132]
 Ax = blockdiag(Ablk, Ablk)
 #Ax = kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad)
-Bu = kron([spzeros(1, N); speye(N)], Bd)
+Bu = repeat(kron([spzeros(1, N); speye(N)], Bd), M)
 #Bu = kron([spzeros(1, N); speye(N)], Bd)
 Aeq = [Ax Bu]
 leq = repeat([-x0; zeros(N * nx)], M)
 ueq = leq
 # - input and state constraints
-Aineq = repeat(speye((N + 1) * nx + N * nu), M)
-lineq = repeat([repeat(xmin, N + 1); repeat(umin, N)], M)
-uineq = repeat([repeat(xmax, N + 1); repeat(umax, N)], M)
+Aineq = speye(M * (N + 1) * nx + N * nu)
+lineq = [repeat(xmin, M * (N + 1)); repeat(umin, N)]
+uineq = [repeat(xmax, M * (N + 1)); repeat(umax, N)]
 # - OSQP constraints
 A, l, u = [Aeq; Aineq], [leq; lineq], [ueq; uineq]
 
