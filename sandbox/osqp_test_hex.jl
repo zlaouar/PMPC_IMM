@@ -16,7 +16,8 @@ A, B, C, D = lin_model.A, lin_model.B, lin_model.C, lin_model.D
 sys = ss(A, B, C, D)
 sysd = c2d(sys, Δt)
 Ad, Bd, H, D = sparse(sysd.A), sparse(sysd.B), sysd.C, sysd.D
-
+Bdfail = deepcopy(Bd)
+Bdfail = copyto!(Bdfail, zeros(nx,1))
 
 
 
@@ -82,9 +83,11 @@ OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
 nsim = 40;
 xvec = Vector{Float64}[]
 push!(xvec, x0)
+tmp = Nothing
+
 @time for _ in 1 : nsim
     # Solve
-    res = OSQP.solve!(m)
+    global res = OSQP.solve!(m)
 
     # Check solver status
     if res.info.status != :Solved
@@ -92,15 +95,24 @@ push!(xvec, x0)
     end
 
     # Apply first control input to the plant
-    ctrl = res.x[(N+1)*nx+1:(N+1)*nx+nu]
+    ctrl = res.x[M*(N+1)*nx+1:M*(N+1)*nx+nu]
     @info ctrl
     global x0 = Ad * x0 + Bd * ctrl
     push!(xvec, x0)
 
     # Update initial state
-    l[1:nx], u[1:nx] = -x0, -x0
-    OSQP.update!(m; l=l, u=u)
+    for i in 1:M
+        l[1 + (N+1)*nx*(i-1):nx *(1 + (N+1)*(i-1))] = -x0
+        u[1 + (N+1)*nx*(i-1):nx *(1 + (N+1)*(i-1))] = -x0
+    end
+    
+    # Update scenario B matrices 
+    Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
+    A[1:264, 265:end] = Bu
+    OSQP.update!(m; l=l, u=u, Ax=vec(A))
 end
+
+
 
 hex_pos_true = xvec
 tvec = 0:Δt:nsim*Δt
@@ -117,6 +129,6 @@ add_trace!(fig, scatter(x=tvec, y=-getindex.(hex_pos_true, 3),
             line=attr(color="rgba(70,10,100,1)"),
             showlegend=false), row=3, col=1)
 
-relayout!(fig, title_text="Hexacopter Position", yaxis_range=[-1,1],
+relayout!(fig, title_text="Hexacopter Position", yaxis_range=[-1,2],
             yaxis2_range=[-1,3], yaxis3_range=[-1,11])
 display(fig)
