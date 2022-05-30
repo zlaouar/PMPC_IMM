@@ -95,7 +95,8 @@ uvec = Vector{Float64}[]
 push!(xvec, x0)
 tmp = Nothing
 aval = A.nzval
-Bmat = ones(N, M)
+Bmat = ones(N, M) .|> Int
+#Bmat[:,1:3] .= 2
 Bvec = Matrix{Float64}[]
 push!(Bvec, deepcopy(Bd))
 function genBvec!(Bvec::Vector{Matrix{Float64}})
@@ -129,14 +130,13 @@ genBvec!(Bvec)
     
     # Update scenario B matrices 
     if step > 10
-        for i in size(Bmat)[2]
+        for j in size(Bmat)[2]
             for i in size(Bmat)[1]
-                Bu[]
-            
+                Bu[(nx+1)+(nx)*(i-1):(2*nx)+(nx)*(i-1),1 + (i-1)*nu: nu + (i-1)*nu] = Bvec[Bmat[i,j]]
             end
         end
-        Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
-        A[1:264, 265:end] = Bu
+        #Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
+        A[1:(N+1)*nx*M, 1+(N+1)*nx*M:end] = Bu
         global avalnew = A.nzval
     end
     OSQP.update!(m; l=l, u=u, Ax=A.nzval)
@@ -167,10 +167,10 @@ display(fig)
 # Plot control signals
 usignal = make_subplots(rows=3, cols=2, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 1), name="rotor 1"), row=1, col=1)
-add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 2)), row=1, col=2)
-add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 3)), row=2, col=1)
-add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 4)), row=2, col=2)
-add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 5)), row=3, col=1)
-add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 6)), row=3, col=2)
+add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 2), name="rotor 2"), row=1, col=2)
+add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 3), name="rotor 3"), row=2, col=1)
+add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 4), name="rotor 4"), row=2, col=2)
+add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 5), name="rotor 5"), row=3, col=1)
+add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 6), name="rotor 6"), row=3, col=2)
 
 display(usignal)
