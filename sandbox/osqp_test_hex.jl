@@ -37,7 +37,7 @@ g = 9.81
 unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
 umin = ones(6) * 0.1 .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
 umax = ones(6) * 15 .- unom #[13, 13, 13, 13, 13, 13] .- u0
-xmin = [[-Inf, -Inf, -Inf, -Inf, -Inf, -1]; -Inf .* ones(6)]
+xmin = [[-Inf, -Inf, -Inf, -Inf, -Inf, -Inf]; -Inf .* ones(6)]
 xmax = [[Inf,  Inf,  Inf,  Inf,  Inf, Inf]; Inf .* ones(6)]
 
 # Objective function
@@ -47,14 +47,14 @@ QN = Q
 R = 0.1 * speye(nu)
 
 # Initial and reference states
-x0 = zeros(12)
-xr = [1, 2, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+xr = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 # Prediction horizon
 N = 10
 
 # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
-M = 3 # number of scenarios
+M = 6 # number of scenarios
 
 # - quadratic objective
 P = blockdiag(blkdiag(blockdiag(kron(speye(N), Q), QN), M), kron(speye(N), R))
@@ -88,7 +88,7 @@ m = OSQP.Model()
 OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
 
 # Simulate in closed loop
-nsim = 80;
+nsim = 100;
 num_modes = 7
 xvec = Vector{Float64}[]
 uvec = Vector{Float64}[]
@@ -96,7 +96,7 @@ push!(xvec, x0)
 tmp = Nothing
 aval = A.nzval
 Bmat = ones(N, M) .|> Int
-Bmat[:,1:3] .= 3
+#Bmat[:,1:3] .= 3
 Bvec = Matrix{Float64}[]
 push!(Bvec, deepcopy(Bd))
 function genBvec!(Bvec::Vector{Matrix{Float64}})
@@ -106,7 +106,7 @@ function genBvec!(Bvec::Vector{Matrix{Float64}})
     end
 end
 genBvec!(Bvec)
-fail_time = 20
+fail_time = 5
 @time for step in 1 : nsim
     # Solve
     global res = OSQP.solve!(m)
@@ -138,7 +138,7 @@ fail_time = 20
         for j in 1:size(Bmat)[2]
             for i in 1:size(Bmat)[1]
                 Bu[(j-1)*(N+1)*nx + (nx+1)+(nx)*(i-1):(j-1)*(N+1)*nx + (2*nx)+(nx)*(i-1),1 + (i-1)*nu: nu + (i-1)*nu] = Bvec[Bmat[i,j]]
-                @info i,j
+                #@info i,j
             end
         end
         #Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
@@ -154,21 +154,40 @@ end
 hex_pos_true = xvec
 tvec = 0:Δt:nsim*Δt
 #tvec = 1:length(xvec)
-fig = make_subplots(rows=3, cols=1, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
+fig_pos = make_subplots(rows=3, cols=1, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
 
-add_trace!(fig, scatter(x=tvec, y=map(x -> x[1], hex_pos_true),
+add_trace!(fig_pos, scatter(x=tvec, y=getindex.(hex_pos_true, 1),
             line=attr(color="rgba(0,100,80,1)"),
             name="true"), row=1, col=1)
-add_trace!(fig, scatter(x=tvec, y=map(x -> x[2], hex_pos_true),
+add_trace!(fig_pos, scatter(x=tvec, y=getindex.(hex_pos_true, 2),
             line=attr(color="rgba(10,10,200,1)"),
             showlegend=false, yaxis_range=[-1,1]), row=2, col=1)
-add_trace!(fig, scatter(x=tvec, y=-getindex.(hex_pos_true, 3),
+add_trace!(fig_pos, scatter(x=tvec, y=-getindex.(hex_pos_true, 3),
             line=attr(color="rgba(70,10,100,1)"),
             showlegend=false), row=3, col=1)
 
-relayout!(fig, title_text="Hexacopter Position", yaxis_range=[-1,2],
-            yaxis2_range=[-1,3], yaxis3_range=[-1,11])
-display(fig)
+relayout!(fig_pos, title_text="Hexacopter Position", yaxis_range=[-1,2],
+            yaxis2_range=[-5,5], yaxis3_range=[-1,11])
+display(fig_pos)
+
+
+# Plot state 
+fig_state = make_subplots(rows=3, cols=1, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
+
+add_trace!(fig_state, scatter(x=tvec, y=getindex.(hex_pos_true, 4),
+            line=attr(color="rgba(0,100,80,1)"),
+            name="true"), row=1, col=1)
+add_trace!(fig_state, scatter(x=tvec, y=getindex.(hex_pos_true, 5),
+            line=attr(color="rgba(10,10,200,1)"),
+            showlegend=false, yaxis_range=[-1,1]), row=2, col=1)
+add_trace!(fig_state, scatter(x=tvec, y=-getindex.(hex_pos_true, 6),
+            line=attr(color="rgba(70,10,100,1)"),
+            showlegend=false), row=3, col=1)
+
+relayout!(fig_state, title_text="Hexacopter Angles", yaxis_range=[-1,2],
+            yaxis2_range=[-5,5], yaxis3_range=[-1,11])
+display(fig_state)
+
 
 # Plot control signals
 uvec = [uvec[i] + unom for i in 1:length(uvec)]
