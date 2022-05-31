@@ -88,7 +88,7 @@ m = OSQP.Model()
 OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
 
 # Simulate in closed loop
-nsim = 40;
+nsim = 80;
 num_modes = 7
 xvec = Vector{Float64}[]
 uvec = Vector{Float64}[]
@@ -96,7 +96,7 @@ push!(xvec, x0)
 tmp = Nothing
 aval = A.nzval
 Bmat = ones(N, M) .|> Int
-#Bmat[:,1:3] .= 2
+Bmat[:,1:3] .= 3
 Bvec = Matrix{Float64}[]
 push!(Bvec, deepcopy(Bd))
 function genBvec!(Bvec::Vector{Matrix{Float64}})
@@ -106,6 +106,7 @@ function genBvec!(Bvec::Vector{Matrix{Float64}})
     end
 end
 genBvec!(Bvec)
+fail_time = 20
 @time for step in 1 : nsim
     # Solve
     global res = OSQP.solve!(m)
@@ -118,7 +119,11 @@ genBvec!(Bvec)
     # Apply first control input to the plant
     ctrl = res.x[M*(N+1)*nx+1:M*(N+1)*nx+nu]
     @info ctrl
-    global x0 = Ad * x0 + Bd * ctrl
+    if step > fail_time
+        global x0 = Ad * x0 + Bvec[3] * ctrl
+    else
+        global x0 = Ad * x0 + Bd * ctrl
+    end
     push!(xvec, x0)
     push!(uvec, ctrl)
 
@@ -129,10 +134,11 @@ genBvec!(Bvec)
     end
     
     # Update scenario B matrices 
-    if step > 10
-        for j in size(Bmat)[2]
-            for i in size(Bmat)[1]
-                Bu[(nx+1)+(nx)*(i-1):(2*nx)+(nx)*(i-1),1 + (i-1)*nu: nu + (i-1)*nu] = Bvec[Bmat[i,j]]
+    if step > fail_time
+        for j in 1:size(Bmat)[2]
+            for i in 1:size(Bmat)[1]
+                Bu[(j-1)*(N+1)*nx + (nx+1)+(nx)*(i-1):(j-1)*(N+1)*nx + (2*nx)+(nx)*(i-1),1 + (i-1)*nu: nu + (i-1)*nu] = Bvec[Bmat[i,j]]
+                @info i,j
             end
         end
         #Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
@@ -165,6 +171,7 @@ relayout!(fig, title_text="Hexacopter Position", yaxis_range=[-1,2],
 display(fig)
 
 # Plot control signals
+uvec = [uvec[i] + unom for i in 1:length(uvec)]
 usignal = make_subplots(rows=3, cols=2, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 1), name="rotor 1"), row=1, col=1)
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 2), name="rotor 2"), row=1, col=2)
