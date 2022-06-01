@@ -5,16 +5,32 @@ using SparseArrays, OSQP
 using PlotlyJS
 using ControlSystems
 using PMPC_IMM.Hexacopter: LinearModel
+using PMPC_IMM.PMPC: unom_vec
 
+
+
+
+# Utility functions
+speye(N) = spdiagm(ones(N))
 
 function blkdiag(A::AbstractMatrix, N::Int)
     return cat(Iterators.repeated(A,N)..., dims=(1,2))
 end
 
+function genBvec!(Bvec::Vector{Matrix{Float64}})
+    for i in 1:num_modes-1
+        push!(Bvec, deepcopy(Bd))
+        last(Bvec)[:,i] .= 0.0
+    end
+end
 
-# Utility function
-speye(N) = spdiagm(ones(N))
+# Prediction horizon
+N = 10
 
+# Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
+M = 3 # number of scenarios
+
+num_modes = 7
 # Discrete time model of a Hexacopter
 Δt = 0.1
 lin_model = LinearModel()
@@ -25,9 +41,13 @@ Ad, Bd, H, D = sparse(sysd.A), sparse(sysd.B), sysd.C, sysd.D
 (nx, nu) = size(Bd)
 Bdfail = deepcopy(Bd)
 Bdfail = copyto!(Bdfail, zeros(nx,1))
+Bvec = Matrix{Float64}[]
+push!(Bvec, deepcopy(Bd))
 
-print("hello")
-display(Bd)
+genBvec!(Bvec)
+Bmat = ones(N, M) .|> Int
+Bmat[:,1:3] .= 3
+
 
 
 # Constraints
@@ -35,26 +55,21 @@ u0 = 15.5916
 m = 2.4 # kg
 g = 9.81
 unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
-umin = ones(6) * 0.1 .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
-umax = ones(6) * 15 .- unom #[13, 13, 13, 13, 13, 13] .- u0
+umin = ones(6) * 0.1# .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
+umax = ones(6) * 15# .- unom #[13, 13, 13, 13, 13, 13] .- u0
 xmin = [[-Inf, -Inf, -Inf, -Inf, -Inf, -Inf]; -Inf .* ones(6)]
 xmax = [[Inf,  Inf,  Inf,  Inf,  Inf, Inf]; Inf .* ones(6)]
 
 # Objective function
-Q = spdiagm([5, 5, 5, 10, 10, 1, 1, 1, 1, 10, 10, 1])
+Q = spdiagm([5, 5, 70, 10, 10, 1, 1, 1, 1, 10, 10, 1])
 #Q = spdiagm([0, 0, 10, 10, 10, 10, 0, 0, 0, 5, 5, 5])
 QN = Q
 R = 0.1 * speye(nu)
 
 # Initial and reference states
 x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-xr = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+xr = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-# Prediction horizon
-N = 10
-
-# Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
-M = 6 # number of scenarios
 
 # - quadratic objective
 P = blockdiag(blkdiag(blockdiag(kron(speye(N), Q), QN), M), kron(speye(N), R))
@@ -72,7 +87,14 @@ Ax = blkdiag(kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad), 
 Bu = repeat(kron([spzeros(1, N); speye(N)], Bd), M)
 #Bu = kron([spzeros(1, N); speye(N)], Bd)
 Aeq = [Ax Bu]
-leq = repeat([-x0; zeros(N * nx)], M)
+#leq = repeat([-x0; zeros(N * nx)], M)
+leq = zeros((N+1)*nx*M)
+for j in 1:size(Bmat)[2]
+    leq[1+(j-1)*nx*(N+1):nx+(j-1)*nx*(N+1)] = -x0
+    for i in 1:size(Bmat)[1]
+        leq[nx+1+(i-1)*nx:2*nx+(i-1)*nx] = Bvec[Bmat[i,j]] * unom_vec[Bmat[i,j]]
+    end
+end
 ueq = leq
 # - input and state constraints
 Aineq = speye(M * (N + 1) * nx + N * nu)
@@ -89,24 +111,15 @@ OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
 
 # Simulate in closed loop
 nsim = 100;
-num_modes = 7
+
 xvec = Vector{Float64}[]
 uvec = Vector{Float64}[]
 push!(xvec, x0)
 tmp = Nothing
 aval = A.nzval
-Bmat = ones(N, M) .|> Int
-#Bmat[:,1:3] .= 3
-Bvec = Matrix{Float64}[]
-push!(Bvec, deepcopy(Bd))
-function genBvec!(Bvec::Vector{Matrix{Float64}})
-    for i in 1:num_modes-1
-        push!(Bvec, deepcopy(Bd))
-        last(Bvec)[:,i] .= 0.0
-    end
-end
-genBvec!(Bvec)
-fail_time = 5
+
+
+fail_time = 1
 @time for step in 1 : nsim
     # Solve
     global res = OSQP.solve!(m)
@@ -120,9 +133,9 @@ fail_time = 5
     ctrl = res.x[M*(N+1)*nx+1:M*(N+1)*nx+nu]
     @info ctrl
     if step > fail_time
-        global x0 = Ad * x0 + Bvec[3] * ctrl
+        global x0 = Ad * x0 + Bvec[3] * ctrl - Bvec[3] * unom_vec[3]
     else
-        global x0 = Ad * x0 + Bd * ctrl
+        global x0 = Ad * x0 + Bd * ctrl - Bd * unom_vec[1]
     end
     push!(xvec, x0)
     push!(uvec, ctrl)
@@ -190,7 +203,7 @@ display(fig_state)
 
 
 # Plot control signals
-uvec = [uvec[i] + unom for i in 1:length(uvec)]
+#uvec = [uvec[i] + unom for i in 1:length(uvec)]
 usignal = make_subplots(rows=3, cols=2, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 1), name="rotor 1"), row=1, col=1)
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 2), name="rotor 2"), row=1, col=2)
