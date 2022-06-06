@@ -3,9 +3,11 @@ using PMPC_IMM.PMPC: Wd, Vd
 using PMPC_IMM.Hexacopter: MixMat, simulate_nonlinear
 using LinearAlgebra
 
+const mpc = PMPC_IMM.PMPC
+
 
 function beliefUpdater(IMM_params::IMM, u, z, SS)
-    F, Gmode, H, dt = SS.F, SS.Gmode, SS.H, SS.dt
+    F, H, dt = SS.F, SS.H, SS.dt
     num_modes, π, bel = IMM_params.num_modes, IMM_params.π_mat, IMM_params.bel
     x_prev = bel.means
     P_prev = bel.covariances
