@@ -25,4 +25,9 @@ export LinearModel
 export simulate_nonlinear, f!
 end
 
+module Estimator
+include(joinpath("Estimator", "Estimator.jl"))
+export beliefUpdater
+end
+
 end # module

@@ -6,8 +6,10 @@ using PlotlyJS
 using ControlSystems
 using LinearAlgebra
 using Distributions
+using POMDPModelTools
 using PMPC_IMM.Hexacopter: LinearModel
 using PMPC_IMM.PMPC: unom_vec, genGmat!, belief
+using PMPC_IMM.Estimator: beliefUpdater
 
 
 
@@ -156,8 +158,6 @@ Bu = repeat(kron([spzeros(1, N); speye(N)], Bd), M)
 Aeq = [Ax Bu]
 #leq = repeat([-x0; zeros(N * nx)], M)
 leq = zeros((N+1)*nx*M)
-
-updateEq!(leq,Bmat)
 ueq = leq
 
 # - input and state constraints
@@ -166,6 +166,7 @@ lineq = [repeat(xmin, M * (N + 1)); repeat(umin, N)]
 uineq = [repeat(xmax, M * (N + 1)); repeat(umax, N)]
 # - OSQP constraints
 A, l, u = [Aeq; Aineq], [leq; lineq], [ueq; uineq]
+updateEq!(l, u, Bmat, x0)
 Aold = deepcopy(A)
 # Create an OSQP model
 m = OSQP.Model()
@@ -204,6 +205,9 @@ fail_time = 1
     push!(xvec, x0)
     push!(uvec, ctrl)
 
+    bel, x_est = belief_updater(IMM_params, u, z, SS)
+    IMM_params.bel = bel
+    
     genBmat!(Bmat, bel, N, M)
 
     # Update equality constraints
