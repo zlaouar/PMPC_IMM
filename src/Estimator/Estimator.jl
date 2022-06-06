@@ -1,4 +1,8 @@
 using PMPC_IMM.PMPC
+using PMPC_IMM.PMPC: Wd, Vd
+using PMPC_IMM.Hexacopter: MixMat, simulate_nonlinear
+using LinearAlgebra
+
 
 function beliefUpdater(IMM_params::IMM, u, z, SS)
     F, Gmode, H, dt = SS.F, SS.Gmode, SS.H, SS.dt
@@ -227,4 +231,47 @@ function wrapitup(x)
         end
     end
     return x_new
+end
+
+
+## Dynamics functions 
+
+function nl_dyn(x, u, SS, i, time_fail; rotor_fail=1)
+    dt, H = SS.dt, SS.H
+    if i < time_fail
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
+    else
+       x_true = last(simulate_nonlinear(x,nl_mode(u,rotor_fail+1),dt))#+rand(mpc.Wd)
+    end
+    return wrapitup(x_true), H*wrapitup(x_true)#+[rand(mpc.Vd);zeros(6)])
+end
+
+function nl_dyn_proc_noise(x, u, SS, i, time_fail; rotor_fail=1)
+    dt, H = SS.dt, SS.H
+    if i < time_fail
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt)) + rand(Wd)
+    else
+       x_true = last(simulate_nonlinear(x,nl_mode(u,rotor_fail+1),dt))#+rand(mpc.Wd)
+    end
+    return wrapitup(x_true), H*wrapitup(x_true)#+[rand(mpc.Vd);zeros(6)])
+end
+
+function nl_dyn_meas_noise(x, u, SS, i, time_fail; rotor_fail=1)
+    dt, H = SS.dt, SS.H
+    if i < time_fail
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt))#+rand(mpc.Wd)
+    else
+       x_true = last(simulate_nonlinear(x,nl_mode(u,rotor_fail+1),dt)) + rand(Wd)
+    end
+    return wrapitup(x_true), H*wrapitup(x_true)#+[rand(mpc.Vd);zeros(6)])
+end
+
+function nl_dyn_all_noise(x, u, SS, i, time_fail; rotor_fail=1)
+    dt, H = SS.dt, SS.H
+    if i < time_fail
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt)) + rand(mpc.Wd)
+    else
+       x_true = last(simulate_nonlinear(x,nl_mode(u,rotor_fail+1),dt)) + rand(Wd)
+    end
+    return wrapitup(x_true), H*wrapitup(x_true)#+[rand(mpc.Vd);zeros(6)])
 end

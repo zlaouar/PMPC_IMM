@@ -8,8 +8,8 @@ using LinearAlgebra
 using Distributions
 using POMDPModelTools
 using PMPC_IMM.Hexacopter: LinearModel
-using PMPC_IMM.PMPC: unom_vec, genGmat!, belief
-using PMPC_IMM.Estimator: beliefUpdater
+using PMPC_IMM.PMPC: unom_vec, genGmat!, belief, ss_params, IMM
+using PMPC_IMM.Estimator: beliefUpdater, nl_dyn
 
 
 
@@ -106,7 +106,7 @@ genBvec!(Bvec)
 Bmat = ones(N, M) .|> Int
 Bmat[:,1:3] .= 3
 
-
+SS = ss_params(Ad, Bd, Bmat, Bvec, H, D, Δt)
 
 # Constraints
 u0 = 15.5916
@@ -139,6 +139,18 @@ covariances = [Phex,Phex,Phex,Phex,Phex,Phex,Phex]
 μ0 = [0.94 0.01 0.01 0.01 0.01 0.01 0.01] # Initial mode probabilities
 μ3 = [0.0 0.0 1.0 0.0 0.0 0.0 0.0]
 bel = belief(means, covariances, μ3) # Initial Belief
+
+π_mat = [0.88 0.03 0.03 0.03 0.03 0.03 0.03;
+            0.005    0.97    0.005    0.005    0.005    0.005    0.005;
+            0.005    0.005    0.97    0.005    0.005    0.005    0.005;
+            0.005    0.005    0.005    0.97    0.005    0.005    0.005;
+            0.005    0.005    0.005    0.005    0.97    0.005    0.005;
+            0.005    0.005    0.005    0.005    0.005    0.97    0.005;
+            0.005    0.005    0.005    0.005    0.005    0.005    0.97]
+
+IMM_params = IMM(π_mat, num_modes, bel)
+
+
 
 # - quadratic objective
 P = blockdiag(blkdiag(blockdiag(kron(speye(N), Q), QN), M), kron(speye(N), R))
@@ -178,13 +190,16 @@ OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
 nsim = 100;
 
 xvec = Vector{Float64}[]
+xvec_est = Vector{Float64}[]
 uvec = Vector{Float64}[]
+x_true = x0
 push!(xvec, x0)
 tmp = Nothing
-aval = A.nzval
 
 
 fail_time = 1
+
+
 @time for step in 1 : nsim
     # Solve
     global res = OSQP.solve!(m)
@@ -196,18 +211,22 @@ fail_time = 1
 
     # Apply first control input to the plant
     ctrl = res.x[M*(N+1)*nx+1:M*(N+1)*nx+nu]
-    @info ctrl
-    if step > fail_time
-        global x0 = Ad * x0 + Bvec[3] * ctrl - Bvec[3] * unom_vec[3]
-    else
-        global x0 = Ad * x0 + Bd * ctrl - Bd * unom_vec[1]
-    end
+    #@info ctrl
+    #if step > fail_time
+    #    global x0 = Ad * x0 + Bvec[3] * ctrl - Bvec[3] * unom_vec[3]
+    #else
+    #    global x0 = Ad * x0 + Bd * ctrl - Bd * unom_vec[1]
+    #end
+    
+    x_true, z = nl_dyn(x_true, ctrl, SS, step, fail_time, rotor_fail=3) #Update to NL
     push!(xvec, x0)
     push!(uvec, ctrl)
 
-    bel, x_est = belief_updater(IMM_params, u, z, SS)
-    IMM_params.bel = bel
     
+    bel, x_est = beliefUpdater(IMM_params, ctrl, z, SS)
+    push!(xvec_est, x_est)
+    IMM_params.bel = bel
+
     genBmat!(Bmat, bel, N, M)
 
     # Update equality constraints

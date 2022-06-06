@@ -117,6 +117,16 @@ mutable struct ssModel
     dt::Float64
 end
 
+mutable struct ss_params
+    F::Matrix{Float64}
+    G::Matrix{Float64}
+    Bmat::Matrix{Float64}
+    Bvec::Vector{Matrix{Float64}}
+    H::Matrix{Float64}
+    D::Matrix{Float64}
+    dt::Float64
+end
+
 mutable struct ssModelm
     F::Matrix{Float64}
     G::Matrix{Float64}

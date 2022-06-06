@@ -9,7 +9,7 @@ import JuMP
 module PMPC
 include(joinpath("PMPC", "PMPC_Jump.jl"))
 export umpc, IMM, ssModel, ssModelm, PMPCSetup, belief, genGmat!
-export unom_vec
+export unom_vec, ss_params, Wd, Vd
 end
 
 module Hexacopter
@@ -27,7 +27,8 @@ end
 
 module Estimator
 include(joinpath("Estimator", "Estimator.jl"))
-export beliefUpdater
+export beliefUpdater, nl_dyn
+export nl_dyn_proc_noise, nl_dyn_meas_noise, nl_dyn_all_noise
 end
 
 end # module
