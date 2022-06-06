@@ -4,8 +4,10 @@
 using SparseArrays, OSQP
 using PlotlyJS
 using ControlSystems
+using LinearAlgebra
+using Distributions
 using PMPC_IMM.Hexacopter: LinearModel
-using PMPC_IMM.PMPC: unom_vec
+using PMPC_IMM.PMPC: unom_vec, genGmat!, belief
 
 
 
@@ -21,6 +23,60 @@ function genBvec!(Bvec::Vector{Matrix{Float64}})
     for i in 1:num_modes-1
         push!(Bvec, deepcopy(Bd))
         last(Bvec)[:,i] .= 0.0
+    end
+end
+
+function updateEq!(l, u, Bmat, x0)
+    for j in 1:size(Bmat)[2]
+        l[1+(j-1)*nx*(N+1):nx+(j-1)*nx*(N+1)] = -x0
+        for i in 1:size(Bmat)[1]
+            l[nx+1+(i-1)*nx:2*nx+(i-1)*nx] = Bvec[Bmat[i,j]] * unom_vec[Bmat[i,j]]
+        end
+    end
+    u[1:(N+1)*nx*M] = l[1:(N+1)*nx*M]
+end
+
+function updateA!(A, Bmat)
+    for j in 1:size(Bmat)[2]
+        for i in 1:size(Bmat)[1]
+            Bu[(j-1)*(N+1)*nx + (nx+1)+(nx)*(i-1):(j-1)*(N+1)*nx + (2*nx)+(nx)*(i-1),1 + (i-1)*nu: nu + (i-1)*nu] = Bvec[Bmat[i,j]]
+            #@info i,j
+        end
+    end
+    #Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
+    A[1:(N+1)*nx*M, 1+(N+1)*nx*M:end] = Bu
+end
+
+function genBmat!(Bmat, b, T, M)
+    dist = Categorical(b.mode_probs)
+    fail_dist = SparseCat([1,2,3,4,5,6,7],[0.03,0.03,0.03,0.03,0.03,0.03,0.82])
+    sampled_inds = rand(dist, M)
+
+    failed_rotor = 0
+    for j = 1:M
+        if sampled_inds[j] == 1 # nominal particle
+            for i in 1:T
+                rand_fail = rand(fail_dist)
+                if rand_fail != 7 
+                    failed_rotor = rand_fail
+                else # if no rotors fail
+                    Bmat[i,j] = 1
+                end
+
+                if failed_rotor != 0 # if a rotor fails
+                    if i == T
+                        Bmat[i,j] = failed_rotor + 1
+                    else
+                        Bmat[i:end,j] .= failed_rotor + 1
+                    end
+                    break
+                end
+                failed_rotor = 0
+
+            end
+        else # failure particle
+            Bmat[:,j] .= sampled_inds[j]
+        end
     end
 end
 
@@ -71,6 +127,17 @@ x0 = [0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 xr = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 
+ns = 12
+Phex = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+#means = [x0,x0]
+#covariances = [P,P]
+means = [x0,x0,x0,x0,x0,x0,x0]
+covariances = [Phex,Phex,Phex,Phex,Phex,Phex,Phex]
+#μ0 = [0.03, 0.97] # Initial mode probabilities
+μ0 = [0.94 0.01 0.01 0.01 0.01 0.01 0.01] # Initial mode probabilities
+μ3 = [0.0 0.0 1.0 0.0 0.0 0.0 0.0]
+bel = belief(means, covariances, μ3) # Initial Belief
+
 # - quadratic objective
 P = blockdiag(blkdiag(blockdiag(kron(speye(N), Q), QN), M), kron(speye(N), R))
 
@@ -89,13 +156,10 @@ Bu = repeat(kron([spzeros(1, N); speye(N)], Bd), M)
 Aeq = [Ax Bu]
 #leq = repeat([-x0; zeros(N * nx)], M)
 leq = zeros((N+1)*nx*M)
-for j in 1:size(Bmat)[2]
-    leq[1+(j-1)*nx*(N+1):nx+(j-1)*nx*(N+1)] = -x0
-    for i in 1:size(Bmat)[1]
-        leq[nx+1+(i-1)*nx:2*nx+(i-1)*nx] = Bvec[Bmat[i,j]] * unom_vec[Bmat[i,j]]
-    end
-end
+
+updateEq!(leq,Bmat)
 ueq = leq
+
 # - input and state constraints
 Aineq = speye(M * (N + 1) * nx + N * nu)
 lineq = [repeat(xmin, M * (N + 1)); repeat(umin, N)]
@@ -140,24 +204,14 @@ fail_time = 1
     push!(xvec, x0)
     push!(uvec, ctrl)
 
-    # Update initial state (for each scenario)
-    for i in 1:M
-        l[1 + (N+1)*nx*(i-1):nx *(1 + (N+1)*(i-1))] = -x0
-        u[1 + (N+1)*nx*(i-1):nx *(1 + (N+1)*(i-1))] = -x0
-    end
-    
+    genBmat!(Bmat, bel, N, M)
+
+    # Update equality constraints
+    updateEq!(l, u, Bmat, x0)
+
     # Update scenario B matrices 
-    if step > fail_time
-        for j in 1:size(Bmat)[2]
-            for i in 1:size(Bmat)[1]
-                Bu[(j-1)*(N+1)*nx + (nx+1)+(nx)*(i-1):(j-1)*(N+1)*nx + (2*nx)+(nx)*(i-1),1 + (i-1)*nu: nu + (i-1)*nu] = Bvec[Bmat[i,j]]
-                #@info i,j
-            end
-        end
-        #Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
-        A[1:(N+1)*nx*M, 1+(N+1)*nx*M:end] = Bu
-        global avalnew = A.nzval
-    end
+    updateA!(A, Bmat)
+    
     OSQP.update!(m; l=l, u=u, Ax=A.nzval)
 end
 
@@ -199,7 +253,7 @@ add_trace!(fig_state, scatter(x=tvec, y=-getindex.(hex_pos_true, 6),
 
 relayout!(fig_state, title_text="Hexacopter Angles", yaxis_range=[-1,2],
             yaxis2_range=[-5,5], yaxis3_range=[-1,11])
-display(fig_state)
+#display(fig_state)
 
 
 # Plot control signals
@@ -212,4 +266,4 @@ add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 4), name="rotor 4"), row=2
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 5), name="rotor 5"), row=3, col=1)
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 6), name="rotor 6"), row=3, col=2)
 
-display(usignal)
+#display(usignal)
