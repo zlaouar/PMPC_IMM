@@ -1,9 +1,9 @@
-using PMPC_IMM.PMPC
-using PMPC_IMM.PMPC: Wd, Vd
+import PMPC_IMM.PMPC as mpc
+using PMPC_IMM.PMPC: Wd, Vd, IMM, belief
 using PMPC_IMM.Hexacopter: MixMat, simulate_nonlinear
 using LinearAlgebra
+using Distributions
 
-const mpc = PMPC_IMM.PMPC
 
 
 function beliefUpdater(IMM_params::IMM, u, z, SS)
@@ -56,10 +56,10 @@ function beliefUpdater(IMM_params::IMM, u, z, SS)
         # end
         push!(L,py)
     end
-    @show wrapitup(x_hat[:,2])
-    display([copyto!(zeros(12),z) x_hat_p])
-    display(S[:,:,2])
-    display(P_hat[2])
+    #@show wrapitup(x_hat[:,2])
+    #display([copyto!(zeros(12),z) x_hat_p])
+    #display(S[:,:,2])
+    #display(P_hat[2])
     # @show MvNormal(Symmetric(S[:,:,1]))
     # @show v_arr[:,1]
     # @show L

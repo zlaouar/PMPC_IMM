@@ -113,7 +113,7 @@ u0 = 15.5916
 m = 2.4 # kg
 g = 9.81
 unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
-umin = ones(6) * 0.1# .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
+umin = ones(6) * 0.0# .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
 umax = ones(6) * 15# .- unom #[13, 13, 13, 13, 13, 13] .- u0
 xmin = [[-Inf, -Inf, -Inf, -Inf, -Inf, -Inf]; -Inf .* ones(6)]
 xmax = [[Inf,  Inf,  Inf,  Inf,  Inf, Inf]; Inf .* ones(6)]
@@ -218,8 +218,8 @@ fail_time = 1
     #    global x0 = Ad * x0 + Bd * ctrl - Bd * unom_vec[1]
     #end
     
-    x_true, z = nl_dyn(x_true, ctrl, SS, step, fail_time, rotor_fail=3) #Update to NL
-    push!(xvec, x0)
+    x_true, z = nl_dyn(x_true, ctrl, SS, step, fail_time, rotor_fail=2) #Update to NL
+    push!(xvec, x_true)
     push!(uvec, ctrl)
 
     
@@ -230,7 +230,7 @@ fail_time = 1
     genBmat!(Bmat, bel, N, M)
 
     # Update equality constraints
-    updateEq!(l, u, Bmat, x0)
+    updateEq!(l, u, Bmat, x_est)
 
     # Update scenario B matrices 
     updateA!(A, Bmat)
@@ -241,7 +241,7 @@ end
 
 
 
-hex_pos_true = xvec
+hex_pos_true = xvec_est
 tvec = 0:Δt:nsim*Δt
 #tvec = 1:length(xvec)
 fig_pos = make_subplots(rows=3, cols=1, shared_xaxes=true, vertical_spacing=0.02, x_title="time(s)")
@@ -276,7 +276,7 @@ add_trace!(fig_state, scatter(x=tvec, y=-getindex.(hex_pos_true, 6),
 
 relayout!(fig_state, title_text="Hexacopter Angles", yaxis_range=[-1,2],
             yaxis2_range=[-5,5], yaxis3_range=[-1,11])
-#display(fig_state)
+display(fig_state)
 
 
 # Plot control signals
@@ -289,4 +289,4 @@ add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 4), name="rotor 4"), row=2
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 5), name="rotor 5"), row=3, col=1)
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 6), name="rotor 6"), row=3, col=2)
 
-#display(usignal)
+display(usignal)
