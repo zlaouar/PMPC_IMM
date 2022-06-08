@@ -67,8 +67,8 @@ function beliefUpdater(IMM_params::IMM, u, z, SS)
     for j in 1:num_modes
         push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
-    @info L
-    @info μ
+    #@info L
+    #@info μ
     # @show μ
     # Combination of Estimates
     x = wrapitup(sum(x_hat_u[j] * μ[j] for j in 1:num_modes)) # overall estimate

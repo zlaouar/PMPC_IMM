@@ -42,38 +42,35 @@ function updateA!(A, Bmat)
     for j in 1:size(Bmat)[2]
         for i in 1:size(Bmat)[1]
             Bu[(j-1)*(N+1)*nx + (nx+1)+(nx)*(i-1):(j-1)*(N+1)*nx + (2*nx)+(nx)*(i-1),1 + (i-1)*nu: nu + (i-1)*nu] = Bvec[Bmat[i,j]]
-            #@info i,j
         end
     end
-    #Bu = [kron([spzeros(1, N); speye(N)], Bd); kron([spzeros(1, N); speye(N)], Bdfail)]
     A[1:(N+1)*nx*M, 1+(N+1)*nx*M:end] = Bu
 end
 
 function genBmat!(Bmat, b, T, M)
     dist = Categorical(b.mode_probs)
-    fail_dist = SparseCat([1,2,3,4,5,6,7],[0.03,0.03,0.03,0.03,0.03,0.03,0.82])
+    fail_dist = SparseCat([1,2,3,4,5,6,7],[0.01,0.01,0.01,0.01,0.01,0.01,0.96])
     sampled_inds = rand(dist, M)
+    @info sampled_inds
 
     failed_rotor = 0
     for j = 1:M
         if sampled_inds[j] == 1 # nominal particle
-            for i in 1:T
+            Bmat[1,j] = 1
+            for i in 2:T
                 rand_fail = rand(fail_dist)
                 if rand_fail != 7 
                     failed_rotor = rand_fail
-                else # if no rotors fail
-                    Bmat[i,j] = 1
-                end
-
-                if failed_rotor != 0 # if a rotor fails
                     if i == T
                         Bmat[i,j] = failed_rotor + 1
                     else
                         Bmat[i:end,j] .= failed_rotor + 1
                     end
+                    failed_rotor = 0
                     break
+                else # if no rotors fail
+                    Bmat[i,j] = 1
                 end
-                failed_rotor = 0
 
             end
         else # failure particle
@@ -86,7 +83,7 @@ end
 N = 10
 
 # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
-M = 3 # number of scenarios
+M = 8 # number of scenarios
 
 num_modes = 7
 # Discrete time model of a Hexacopter
@@ -113,7 +110,7 @@ u0 = 15.5916
 m = 2.4 # kg
 g = 9.81
 unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
-umin = ones(6) * 0.0# .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
+umin = ones(6) * 0.1# .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
 umax = ones(6) * 15# .- unom #[13, 13, 13, 13, 13, 13] .- u0
 xmin = [[-Inf, -Inf, -Inf, -Inf, -Inf, -Inf]; -Inf .* ones(6)]
 xmax = [[Inf,  Inf,  Inf,  Inf,  Inf, Inf]; Inf .* ones(6)]
@@ -184,7 +181,7 @@ Aold = deepcopy(A)
 m = OSQP.Model()
 
 # Setup workspace
-OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true)
+OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true, verbose=false)
 
 # Simulate in closed loop
 nsim = 100;
@@ -192,17 +189,18 @@ nsim = 100;
 xvec = Vector{Float64}[]
 xvec_est = Vector{Float64}[]
 uvec = Vector{Float64}[]
+bel_vec = belief[]
 x_true = x0
 push!(xvec, x0)
 tmp = Nothing
 
 
-fail_time = 1
+fail_time = 50
 
 
 @time for step in 1 : nsim
     # Solve
-    global res = OSQP.solve!(m)
+    res = OSQP.solve!(m)
 
     # Check solver status
     if res.info.status != :Solved
@@ -211,12 +209,6 @@ fail_time = 1
 
     # Apply first control input to the plant
     ctrl = res.x[M*(N+1)*nx+1:M*(N+1)*nx+nu]
-    #@info ctrl
-    #if step > fail_time
-    #    global x0 = Ad * x0 + Bvec[3] * ctrl - Bvec[3] * unom_vec[3]
-    #else
-    #    global x0 = Ad * x0 + Bd * ctrl - Bd * unom_vec[1]
-    #end
     
     x_true, z = nl_dyn(x_true, ctrl, SS, step, fail_time, rotor_fail=2) #Update to NL
     push!(xvec, x_true)
@@ -225,9 +217,11 @@ fail_time = 1
     
     bel, x_est = beliefUpdater(IMM_params, ctrl, z, SS)
     push!(xvec_est, x_est)
+    push!(bel_vec, bel)
     IMM_params.bel = bel
 
     genBmat!(Bmat, bel, N, M)
+    display(Bmat)
 
     # Update equality constraints
     updateEq!(l, u, Bmat, x_est)
@@ -290,3 +284,14 @@ add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 5), name="rotor 5"), row=3
 add_trace!(usignal, scatter(x=tvec, y=getindex.(uvec, 6), name="rotor 6"), row=3, col=2)
 
 display(usignal)
+
+# Plot mode probabilities
+probs = map(x -> x.mode_probs, bel_vec)
+mode_prob_fig = plot(scatter(x=tvec, y=getindex.(probs, 1)))
+add_trace!(mode_prob_fig, scatter(x=tvec, y=getindex.(probs, 2)))
+add_trace!(mode_prob_fig, scatter(x=tvec, y=getindex.(probs, 3)))
+add_trace!(mode_prob_fig, scatter(x=tvec, y=getindex.(probs, 4)))
+add_trace!(mode_prob_fig, scatter(x=tvec, y=getindex.(probs, 5)))
+add_trace!(mode_prob_fig, scatter(x=tvec, y=getindex.(probs, 6)))
+add_trace!(mode_prob_fig, scatter(x=tvec, y=getindex.(probs, 7)))
+display(mode_prob_fig)
