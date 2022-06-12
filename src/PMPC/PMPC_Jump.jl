@@ -16,7 +16,7 @@ const na = 6 # number of actuators
 const nm = 6 # number of measurements
 
 #const P = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-const W = Diagonal(ones(12)*0.001) |> Matrix #Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+const W = Diagonal(ones(12)*0.1) |> Matrix #Diagonal(0.01*ones(ns)) + zeros(ns,ns)
 const V = Diagonal([0.001, 0.001, 0.001, 0.001, 0.001, 0.001]) |> Matrix#Diagonal(0.01*ones(nm)) + zeros(nm,nm)
 const Wd = MvNormal(W)
 const Vd = MvNormal(V)
@@ -41,9 +41,6 @@ function PMPCSetup(T, M, SS, Gfail, Gvec, unom_init, noise_mat_val)
     #Q[3,3] = 10000000
 
     R = (I + zeros(na,na))*0.0001
-
-    prm = MvNormal(W)
-
 
     xinit = [0 0 -10 0 0 0 0 0 0 0 0 0]
 

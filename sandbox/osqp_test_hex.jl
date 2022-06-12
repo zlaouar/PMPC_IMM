@@ -9,7 +9,7 @@ using Distributions
 using POMDPModelTools
 using PMPC_IMM.Hexacopter: LinearModel
 using PMPC_IMM.PMPC: unom_vec, genGmat!, belief, ss_params, IMM
-using PMPC_IMM.Estimator: beliefUpdater, nl_dyn
+using PMPC_IMM.Estimator: beliefUpdater, nl_dyn, nl_dyn_all_noise
 
 
 
@@ -51,7 +51,7 @@ function genBmat!(Bmat, b, T, M)
     dist = Categorical(b.mode_probs)
     fail_dist = SparseCat([1,2,3,4,5,6,7],[0.01,0.01,0.01,0.01,0.01,0.01,0.96])
     sampled_inds = rand(dist, M)
-    @info sampled_inds
+    #@info sampled_inds
 
     failed_rotor = 0
     for j = 1:M
@@ -210,7 +210,7 @@ fail_time = 50
     # Apply first control input to the plant
     ctrl = res.x[M*(N+1)*nx+1:M*(N+1)*nx+nu]
     
-    x_true, z = nl_dyn(x_true, ctrl, SS, step, fail_time, rotor_fail=2) #Update to NL
+    x_true, z = nl_dyn_all_noise(x_true, ctrl, SS, step, fail_time, rotor_fail=2) #Update to NL
     push!(xvec, x_true)
     push!(uvec, ctrl)
 
@@ -221,7 +221,7 @@ fail_time = 50
     IMM_params.bel = bel
 
     genBmat!(Bmat, bel, N, M)
-    display(Bmat)
+    #display(Bmat)
 
     # Update equality constraints
     updateEq!(l, u, Bmat, x_est)

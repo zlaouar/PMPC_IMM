@@ -45,48 +45,22 @@ function beliefUpdater(IMM_params::IMM, u, z, SS)
         push!(x_hat_u,x_predf) # updated state
         P_hat[j] = P_hat[j] - K[:,:,j] * S[:,:,j] * transpose(K[:,:,j]) # updated covariance
 
-        # @show round.(x_predf,digits=3)
-        ####
+
         # Mode Probability update and FDD logic
         MvL = MvNormal(Symmetric(S[:,:,j]))
-        # MvL = MvNormal(round.(S[:,:,j],digits=5))
         py = pdf(MvL, v_arr[:,j])
-        # if py < 0.0001
-        #     py = 0.0001
-        # end
+      
         push!(L,py)
     end
-    #@show wrapitup(x_hat[:,2])
-    #display([copyto!(zeros(12),z) x_hat_p])
-    #display(S[:,:,2])
-    #display(P_hat[2])
-    # @show MvNormal(Symmetric(S[:,:,1]))
-    # @show v_arr[:,1]
-    # @show L
-    #@warn μ_pred
+  
     for j in 1:num_modes
         push!(μ, (μ_pred[j]*L[j])/sum(μ_pred[i]*L[i] for i in 1:num_modes))
     end
-    #@info L
-    #@info μ
-    # @show μ
+
     # Combination of Estimates
     x = wrapitup(sum(x_hat_u[j] * μ[j] for j in 1:num_modes)) # overall estimate
     P = sum((P_hat[j] + (x_hat_u[j]-x) * transpose(x_hat_u[j]-x)) * μ[j] for j in 1:num_modes) # overall covariance
-    #@show P_hat
-    #pprintln(P_hat)
-    #@show typeof(x_hat_u), typeof(P_hat), typeof(μ)
-    # one_list = findall(x->x==1.0,μ)
-    # if !isempty(one_list)
-    #     μ[one_list[1]] -= 0.01
-    #     μ[7] += 0.01
-    # end
-    # mp = minimum(μ)
-    # if abs(mp)<1e-12
-    #     μ = μ .+ 0.01
-    #     μ = μ/sum(μ)
-    #     @warn μ
-    # end
+   
 
     return belief(x_hat_u, P_hat, μ), x
 end
@@ -270,8 +244,9 @@ end
 
 function nl_dyn_all_noise(x, u, SS, i, time_fail; rotor_fail=1)
     dt, H = SS.dt, SS.H
+    @show Wd
     if i < time_fail
-        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt)) + rand(mpc.Wd)
+        x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt)) + rand(Wd)
     else
        x_true = last(simulate_nonlinear(x,nl_mode(u,rotor_fail+1),dt)) + rand(Wd)
     end
