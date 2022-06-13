@@ -1,6 +1,3 @@
-# Add packages - uncomment for first-time setup
-# using Pkg; Pkg.add(["SparseArrays", "OSQP"])
-
 using SparseArrays, OSQP
 using PlotlyJS
 using ControlSystems
@@ -10,8 +7,6 @@ using POMDPModelTools
 using PMPC_IMM.Hexacopter: LinearModel
 using PMPC_IMM.PMPC: unom_vec, genGmat!, belief, ss_params, IMM
 using PMPC_IMM.Estimator: beliefUpdater, nl_dyn, nl_dyn_all_noise
-
-
 
 
 # Utility functions
@@ -128,11 +123,10 @@ xr = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 ns = 12
 Phex = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
-#means = [x0,x0]
-#covariances = [P,P]
+
 means = [x0,x0,x0,x0,x0,x0,x0]
 covariances = [Phex,Phex,Phex,Phex,Phex,Phex,Phex]
-#μ0 = [0.03, 0.97] # Initial mode probabilities
+
 μ0 = [0.94 0.01 0.01 0.01 0.01 0.01 0.01] # Initial mode probabilities
 μ3 = [0.0 0.0 1.0 0.0 0.0 0.0 0.0]
 bel = belief(means, covariances, μ3) # Initial Belief
@@ -152,20 +146,13 @@ IMM_params = IMM(π_mat, num_modes, bel)
 # - quadratic objective
 P = blockdiag(blkdiag(blockdiag(kron(speye(N), Q), QN), M), kron(speye(N), R))
 
-#xblk = P[1:132, 1:132]
-#P = blockdiag(xblk, xblk, P[133:end, 133:end])
 # - linear objective
 q = [repeat([repeat(-Q * xr, N); -QN * xr], M); zeros(N*nu)]
-#q = [repeat(q[1:132], M); q[133:end]]
+
 # - linear dynamics
 Ax = blkdiag(kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad), M)
-#Ablk = Ax[1:132,1:132]
-#Ax = blockdiag(Ablk, Ablk)
-#Ax = kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad)
 Bu = repeat(kron([spzeros(1, N); speye(N)], Bd), M)
-#Bu = kron([spzeros(1, N); speye(N)], Bd)
 Aeq = [Ax Bu]
-#leq = repeat([-x0; zeros(N * nx)], M)
 leq = zeros((N+1)*nx*M)
 ueq = leq
 
