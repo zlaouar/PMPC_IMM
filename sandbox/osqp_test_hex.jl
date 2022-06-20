@@ -4,9 +4,10 @@ using ControlSystems
 using LinearAlgebra
 using Distributions
 using POMDPModelTools
+using PMPC_IMM
 using PMPC_IMM.Hexacopter: LinearModel
-using PMPC_IMM.PMPC: unom_vec, genGmat!, belief, ss_params, IMM
-using PMPC_IMM.Estimator: beliefUpdater, nl_dyn, nl_dyn_all_noise
+#using PMPC_IMM.PMPC: unom_vec, genGmat!, belief, ss_params, IMM
+#using PMPC_IMM.Estimator: beliefUpdater, nl_dyn, nl_dyn_all_noise
 
 
 # Utility functions
@@ -27,7 +28,7 @@ function updateEq!(l, u, Bmat, x0)
     for j in 1:size(Bmat)[2]
         l[1+(j-1)*nx*(N+1):nx+(j-1)*nx*(N+1)] = -x0
         for i in 1:size(Bmat)[1]
-            l[nx+1+(i-1)*nx:2*nx+(i-1)*nx] = Bvec[Bmat[i,j]] * unom_vec[Bmat[i,j]]
+            l[nx+1+(i-1)*nx:2*nx+(i-1)*nx] = Bvec[Bmat[i,j]] * PMPC_IMM.unom_vec[Bmat[i,j]]
         end
     end
     u[1:(N+1)*nx*M] = l[1:(N+1)*nx*M]
@@ -78,7 +79,7 @@ end
 N = 10
 
 # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
-M = 8 # number of scenarios
+M = 1 # number of scenarios
 
 num_modes = 7
 # Discrete time model of a Hexacopter
@@ -96,22 +97,22 @@ push!(Bvec, deepcopy(Bd))
 
 genBvec!(Bvec)
 Bmat = ones(N, M) .|> Int
-Bmat[:,1:3] .= 3
+#Bmat[:,1:3] .= 3
 
-SS = ss_params(Ad, Bd, Bmat, Bvec, H, D, Δt)
+SS = PMPC_IMM.ss_params(Ad, Bd, Bmat, Bvec, H, D, Δt)
 
 # Constraints
 u0 = 15.5916
 m = 2.4 # kg
 g = 9.81
 unom = [m*g/6, m*g/6, m*g/6, m*g/6, m*g/6, m*g/6]
-umin = ones(6) * 0.1# .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
+umin = ones(6) * 0.0# .- unom#[9.6, 9.6, 9.6, 9.6, 9.6, 9.6] .- u0
 umax = ones(6) * 15# .- unom #[13, 13, 13, 13, 13, 13] .- u0
 xmin = [[-Inf, -Inf, -Inf, -Inf, -Inf, -Inf]; -Inf .* ones(6)]
 xmax = [[Inf,  Inf,  Inf,  Inf,  Inf, Inf]; Inf .* ones(6)]
 
 # Objective function
-Q = spdiagm([5, 5, 70, 10, 10, 1, 1, 1, 1, 10, 10, 1])
+Q = spdiagm([5, 5, 70, 10, 10, 70, 0, 0, 0, 0, 0, 0])
 #Q = spdiagm([0, 0, 10, 10, 10, 10, 0, 0, 0, 5, 5, 5])
 QN = Q
 R = 0.1 * speye(nu)
@@ -122,14 +123,14 @@ xr = [0, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 
 ns = 12
-Phex = Diagonal(0.01*ones(ns)) + zeros(ns,ns)
+Phex = Diagonal(0.1*ones(ns)) + zeros(ns,ns)
 
 means = [x0,x0,x0,x0,x0,x0,x0]
 covariances = [Phex,Phex,Phex,Phex,Phex,Phex,Phex]
 
 μ0 = [0.94 0.01 0.01 0.01 0.01 0.01 0.01] # Initial mode probabilities
-μ3 = [0.0 0.0 1.0 0.0 0.0 0.0 0.0]
-bel = belief(means, covariances, μ3) # Initial Belief
+μ3 = [1 0.0 0.0 0.0 0.0 0.0 0.0]
+bel = PMPC_IMM.belief(means, covariances, μ3) # Initial Belief
 
 π_mat = [0.88 0.03 0.03 0.03 0.03 0.03 0.03;
             0.005    0.97    0.005    0.005    0.005    0.005    0.005;
@@ -139,7 +140,7 @@ bel = belief(means, covariances, μ3) # Initial Belief
             0.005    0.005    0.005    0.005    0.005    0.97    0.005;
             0.005    0.005    0.005    0.005    0.005    0.005    0.97]
 
-IMM_params = IMM(π_mat, num_modes, bel)
+IMM_params = PMPC_IMM.IMM(π_mat, num_modes, bel)
 
 
 
@@ -176,7 +177,7 @@ nsim = 100;
 xvec = Vector{Float64}[]
 xvec_est = Vector{Float64}[]
 uvec = Vector{Float64}[]
-bel_vec = belief[]
+bel_vec = PMPC_IMM.belief[]
 x_true = x0
 push!(xvec, x0)
 tmp = Nothing
@@ -197,16 +198,17 @@ fail_time = 50
     # Apply first control input to the plant
     ctrl = res.x[M*(N+1)*nx+1:M*(N+1)*nx+nu]
     
-    x_true, z = nl_dyn_all_noise(x_true, ctrl, SS, step, fail_time, rotor_fail=2) #Update to NL
+    x_true, z = PMPC_IMM.nl_dyn(x_true, ctrl, SS, step, fail_time, rotor_fail=5) #Update to NL
     push!(xvec, x_true)
     push!(uvec, ctrl)
 
     
-    bel, x_est = beliefUpdater(IMM_params, ctrl, z, SS)
+    bel, x_est = PMPC_IMM.beliefUpdater(IMM_params, ctrl, z, SS)
     push!(xvec_est, x_est)
     push!(bel_vec, bel)
     IMM_params.bel = bel
 
+    @show step
     genBmat!(Bmat, bel, N, M)
     #display(Bmat)
 

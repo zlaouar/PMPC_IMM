@@ -1,9 +1,8 @@
-import PMPC_IMM.PMPC as mpc
-using PMPC_IMM.PMPC: Wd, Vd, IMM, belief
+#using PMPC_IMM.PMPC: Wd, Vd, IMM, belief
 using PMPC_IMM.Hexacopter: MixMat, simulate_nonlinear
 using LinearAlgebra
 using Distributions
-
+#const PMPC_IMM.PMPC = mpc
 
 
 function beliefUpdater(IMM_params::IMM, u, z, SS)
@@ -35,10 +34,10 @@ function beliefUpdater(IMM_params::IMM, u, z, SS)
         # println(F * x_hat[:,j] + Gmode[j] * u - Gmode[1] * mpc.unom_vec[j])
         x_hat_p[:,j] = last(simulate_nonlinear(wrapitup(x_hat[:,j]),nl_mode(u,j),dt)) # Predicted state
         x_hat_p[:,j] = wrapitup(x_hat_p[:,j])
-        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + mpc.W # Predicted covariance
+        P_hat[j] = ct2dt(Alin(x_hat[:,j]),dt) * P_hat[j] * transpose(ct2dt(Alin(x_hat[:,j]),dt)) + PMPC_IMM.W # Predicted covariance
         # P_hat[j] = F * P_hat[j] * transpose(F) + mpc.W # Predicted covariance
         v_arr[:,j] = z - H * x_hat_p[:,j] # measurement residual, H is truly linear here
-        S[:,:,j] = H * P_hat[j] * transpose(H) + mpc.V # residual covariance
+        S[:,:,j] = H * P_hat[j] * transpose(H) + PMPC_IMM.V # residual covariance
         K[:,:,j] = P_hat[j] * transpose(H) * inv(S[:,:,j]) # filter gain
         x_predf =  x_hat_p[:,j] + K[:,:,j] * v_arr[:,j]
         x_predf = wrapitup(x_predf)
@@ -244,7 +243,6 @@ end
 
 function nl_dyn_all_noise(x, u, SS, i, time_fail; rotor_fail=1)
     dt, H = SS.dt, SS.H
-    @show Wd
     if i < time_fail
         x_true = last(simulate_nonlinear(x,nl_mode(u,1),dt)) + rand(Wd)
     else
